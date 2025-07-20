@@ -15,6 +15,7 @@ export async function run() {
   const deployment_app_uuid = getInput('deployment_app_uuid')
   const cleanup_service_uuid = getInput('cleanup_service_uuid')
   const cleanup_app_uuid = getInput('cleanup_app_uuid')
+  const reset_supabase_db = getInput('reset_supabase_db')
 
   const coolify = new Coolify({
     baseUrl: coolify_api_url,
@@ -57,7 +58,8 @@ export async function run() {
       deploymentName,
       repository: repositoryName,
       gitBranch: branchOrPR,
-      gitCommitSha: process.env.GITHUB_SHA
+      gitCommitSha: process.env.GITHUB_SHA,
+      reset_supabase_db: reset_supabase_db === 'true'
     })
     setOutput('supabase_url', supabase_url)
     setOutput('supabase_service_role_key', supabase_service_role_key)

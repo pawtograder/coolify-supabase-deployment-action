@@ -66,6 +66,13 @@ inputs:
     required: false
     default: ''
     type: string
+  reset_supabase_db:
+    description:
+      Whether to reset the Supabase database. This is used to reset the Supabase
+      database for the staging deployment.
+    required: false
+    default: false
+    type: boolean
 
 # Define your outputs here.
 outputs:

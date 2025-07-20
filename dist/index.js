@@ -45218,22 +45218,6 @@ const deleteApplicationByUuid = (options) => {
     });
 };
 /**
- * Get
- * Get application by UUID.
- */
-const getApplicationByUuid = (options) => {
-    return (options.client ?? client).get({
-        security: [
-            {
-                scheme: 'bearer',
-                type: 'http'
-            }
-        ],
-        url: '/applications/{uuid}',
-        ...options
-    });
-};
-/**
  * Update
  * Update application by UUID.
  */
@@ -45302,6 +45286,22 @@ const deployByTagOrUuid = (options) => {
             }
         ],
         url: '/deploy',
+        ...options
+    });
+};
+/**
+ * List application deployments
+ * List application deployments by using the app uuid
+ */
+const listDeploymentsByAppUuid = (options) => {
+    return (options.client ?? client).get({
+        security: [
+            {
+                scheme: 'bearer',
+                type: 'http'
+            }
+        ],
+        url: '/deployments/applications/{uuid}',
         ...options
     });
 };
@@ -50591,67 +50591,65 @@ class Coolify {
             body: formData
         });
     }
-    async waitUntilServiceOrAppisReady({ serviceUUID, appUUID, timeout_seconds }) {
+    async waitUntilServiceIsReady({ serviceUUID, timeout_seconds }) {
         const client = this.client;
-        if (serviceUUID) {
-            console.log(`Waiting for service ${serviceUUID} to be ready`);
-        }
-        else if (appUUID) {
-            console.log(`Waiting for app ${appUUID} to be ready`);
-        }
-        else {
-            throw new Error('No service or app UUID provided');
-        }
+        console.log(`Waiting for service ${serviceUUID} to be ready`);
         return new Promise((resolve, reject) => {
             const timeout = timeout_seconds ?? 600;
             const expirationTimeout = setTimeout(() => {
                 clearInterval(interval);
-                reject(new Error(serviceUUID
-                    ? `Timeout waiting for service ${serviceUUID} to be ready`
-                    : `Timeout waiting for app ${appUUID} to be ready`));
+                reject(new Error(`Timeout waiting for service ${serviceUUID} to be ready`));
             }, timeout * 1000);
             async function checkStatus() {
-                if (serviceUUID) {
-                    const serviceStatus = await getServiceByUuid({
-                        client,
-                        path: {
-                            uuid: serviceUUID
-                        }
-                    });
-                    if (serviceStatus.data && 'status' in serviceStatus.data) {
-                        if (serviceStatus.data['status'] === 'running:healthy') {
-                            clearInterval(interval);
-                            clearTimeout(expirationTimeout);
-                            resolve(true);
-                        }
+                const serviceStatus = await getServiceByUuid({
+                    client,
+                    path: {
+                        uuid: serviceUUID
                     }
-                    else {
-                        console.log('No status found');
-                        console.log(JSON.stringify(serviceStatus.data, null, 2));
-                    }
-                }
-                else if (appUUID) {
-                    const appStatus = await getApplicationByUuid({
-                        client,
-                        path: {
-                            uuid: appUUID
-                        }
-                    });
-                    if (appStatus.data && 'status' in appStatus.data) {
-                        if (appStatus.data['status'] &&
-                            appStatus.data['status'].startsWith('running')) {
-                            clearInterval(interval);
-                            clearTimeout(expirationTimeout);
-                            resolve(true);
-                        }
-                    }
-                    else {
-                        console.log('No status found');
-                        console.log(JSON.stringify(appStatus.data, null, 2));
+                });
+                if (serviceStatus.data && 'status' in serviceStatus.data) {
+                    if (serviceStatus.data['status'] === 'running:healthy') {
+                        clearInterval(interval);
+                        clearTimeout(expirationTimeout);
+                        resolve(true);
                     }
                 }
                 else {
-                    throw new Error('No service or app UUID provided');
+                    console.log('No status found');
+                    console.log(JSON.stringify(serviceStatus.data, null, 2));
+                }
+            }
+            const interval = setInterval(checkStatus, 1000);
+            checkStatus();
+        });
+    }
+    async waitUntilAppIsReady({ appUUID, sha, timeout_seconds }) {
+        const client = this.client;
+        console.log(`Waiting for app ${appUUID} to be ready`);
+        return new Promise((resolve, reject) => {
+            const timeout = timeout_seconds ?? 600;
+            const expirationTimeout = setTimeout(() => {
+                clearInterval(interval);
+                reject(new Error(`Timeout waiting for app ${appUUID} to be ready`));
+            }, timeout * 1000);
+            async function checkStatus() {
+                const deployments = (await listDeploymentsByAppUuid({
+                    client,
+                    path: {
+                        uuid: appUUID
+                    }
+                }));
+                const deployment = deployments.data?.deployments.find((deployment) => deployment.commit === sha);
+                if (deployment) {
+                    if (deployment.status === 'finished') {
+                        clearInterval(interval);
+                        clearTimeout(expirationTimeout);
+                        resolve(true);
+                    }
+                }
+                else {
+                    console.log('No status found');
+                    console.log(JSON.stringify(deployments.data, null, 2));
                 }
             }
             const interval = setInterval(checkStatus, 1000);
@@ -50836,7 +50834,7 @@ class Coolify {
             console.log(`Frontend app ${cleanup_app_uuid} not found`);
         }
     }
-    async createDeployment({ ephemeral, checkedOutProjectDir, deploymentName, repository, gitBranch, gitCommitSha }) {
+    async createDeployment({ ephemeral, checkedOutProjectDir, deploymentName, repository, gitBranch, gitCommitSha, reset_supabase_db }) {
         const supabaseComponentName = `${deploymentName}-supabase`;
         const { backendServiceUUID, postgres_db, postgres_hostname, postgres_port, postgres_password, supabase_url, supabase_anon_key, supabase_service_role_key, deploymentKey, isNewSupabaseService } = await this.getSupabaseServiceUUIDOrCreateNewOne({
             supabaseComponentName,
@@ -50852,7 +50850,7 @@ class Coolify {
             ?.map((app) => app.name)
             .join(', ')}`);
         console.log('Waiting for backend to start');
-        await this.waitUntilServiceOrAppisReady({
+        await this.waitUntilServiceIsReady({
             serviceUUID: backendServiceUUID
         });
         console.log('Backend started');
@@ -50865,7 +50863,7 @@ class Coolify {
             serviceUUID: backendServiceUUID,
             deployToken: deploymentKey,
             checkedOutProjectDir,
-            resetDb: isNewSupabaseService,
+            resetDb: isNewSupabaseService || reset_supabase_db,
             postgresPassword: postgres_password
         });
         const existingFrontendApp = existingApplications.data?.find((app) => app.name === frontendAppName);
@@ -50936,8 +50934,9 @@ class Coolify {
             });
             //Wait for frontend to start
             console.log('Waiting for frontend to start');
-            await this.waitUntilServiceOrAppisReady({
-                appUUID: appUUID
+            await this.waitUntilAppIsReady({
+                appUUID: appUUID,
+                sha: gitCommitSha
             });
             console.log('Frontend started');
         }
@@ -50959,8 +50958,9 @@ class Coolify {
                     uuid: appUUID
                 }
             });
-            await this.waitUntilServiceOrAppisReady({
-                appUUID: appUUID
+            await this.waitUntilAppIsReady({
+                appUUID: appUUID,
+                sha: gitCommitSha
             });
         }
         return {
@@ -51011,6 +51011,7 @@ async function run() {
     const deployment_app_uuid = coreExports.getInput('deployment_app_uuid');
     const cleanup_service_uuid = coreExports.getInput('cleanup_service_uuid');
     const cleanup_app_uuid = coreExports.getInput('cleanup_app_uuid');
+    const reset_supabase_db = coreExports.getInput('reset_supabase_db');
     const coolify = new Coolify({
         baseUrl: coolify_api_url,
         token: coolify_api_token,
@@ -51043,7 +51044,8 @@ async function run() {
             deploymentName,
             repository: repositoryName,
             gitBranch: branchOrPR,
-            gitCommitSha: process.env.GITHUB_SHA
+            gitCommitSha: process.env.GITHUB_SHA,
+            reset_supabase_db: reset_supabase_db === 'true'
         });
         coreExports.setOutput('supabase_url', supabase_url);
         coreExports.setOutput('supabase_service_role_key', supabase_service_role_key);

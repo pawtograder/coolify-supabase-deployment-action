@@ -14,7 +14,6 @@ import {
   createService,
   deleteServiceByUuid,
   deleteApplicationByUuid,
-  getApplicationByUuid,
   getServiceByUuid,
   listApplications,
   listEnvsByServiceUuid,
@@ -25,7 +24,8 @@ import {
   updateEnvsByServiceUuid,
   updateServiceByUuid,
   updateApplicationByUuid,
-  deployByTagOrUuid
+  deployByTagOrUuid,
+  listDeploymentsByAppUuid
 } from './client/sdk.gen.js'
 import { TCPTunnelClient } from './tcp-tunnel.js'
 
@@ -74,7 +74,7 @@ export default class Coolify {
     this.base_deployment_url = base_deployment_url
     this.deployment_app_uuid = deployment_app_uuid
   }
-  private async deployFunctions({
+  async deployFunctions({
     token,
     serviceUuid,
     folderPath
@@ -126,77 +126,92 @@ export default class Coolify {
     })
   }
 
-  private async waitUntilServiceOrAppisReady({
+  private async waitUntilServiceIsReady({
     serviceUUID,
-    appUUID,
     timeout_seconds
   }: {
-    serviceUUID?: string
-    appUUID?: string
+    serviceUUID: string
     timeout_seconds?: number
   }) {
     const client = this.client
-    if (serviceUUID) {
-      console.log(`Waiting for service ${serviceUUID} to be ready`)
-    } else if (appUUID) {
-      console.log(`Waiting for app ${appUUID} to be ready`)
-    } else {
-      throw new Error('No service or app UUID provided')
-    }
+    console.log(`Waiting for service ${serviceUUID} to be ready`)
+
     return new Promise((resolve, reject) => {
       const timeout = timeout_seconds ?? 600
       const expirationTimeout = setTimeout(() => {
         clearInterval(interval)
         reject(
-          new Error(
-            serviceUUID
-              ? `Timeout waiting for service ${serviceUUID} to be ready`
-              : `Timeout waiting for app ${appUUID} to be ready`
-          )
+          new Error(`Timeout waiting for service ${serviceUUID} to be ready`)
         )
       }, timeout * 1000)
+
       async function checkStatus() {
-        if (serviceUUID) {
-          const serviceStatus = await getServiceByUuid({
-            client,
-            path: {
-              uuid: serviceUUID
-            }
-          })
-          if (serviceStatus.data && 'status' in serviceStatus.data) {
-            if (serviceStatus.data['status'] === 'running:healthy') {
-              clearInterval(interval)
-              clearTimeout(expirationTimeout)
-              resolve(true)
-            }
-          } else {
-            console.log('No status found')
-            console.log(JSON.stringify(serviceStatus.data, null, 2))
+        const serviceStatus = await getServiceByUuid({
+          client,
+          path: {
+            uuid: serviceUUID
           }
-        } else if (appUUID) {
-          const appStatus = await getApplicationByUuid({
-            client,
-            path: {
-              uuid: appUUID
-            }
-          })
-          if (appStatus.data && 'status' in appStatus.data) {
-            if (
-              appStatus.data['status'] &&
-              appStatus.data['status'].startsWith('running')
-            ) {
-              clearInterval(interval)
-              clearTimeout(expirationTimeout)
-              resolve(true)
-            }
-          } else {
-            console.log('No status found')
-            console.log(JSON.stringify(appStatus.data, null, 2))
+        })
+        if (serviceStatus.data && 'status' in serviceStatus.data) {
+          if (serviceStatus.data['status'] === 'running:healthy') {
+            clearInterval(interval)
+            clearTimeout(expirationTimeout)
+            resolve(true)
           }
         } else {
-          throw new Error('No service or app UUID provided')
+          console.log('No status found')
+          console.log(JSON.stringify(serviceStatus.data, null, 2))
         }
       }
+
+      const interval = setInterval(checkStatus, 1000)
+      checkStatus()
+    })
+  }
+
+  private async waitUntilAppIsReady({
+    appUUID,
+    sha,
+    timeout_seconds
+  }: {
+    appUUID: string
+    sha: string
+    timeout_seconds?: number
+  }) {
+    const client = this.client
+    console.log(`Waiting for app ${appUUID} to be ready`)
+
+    return new Promise((resolve, reject) => {
+      const timeout = timeout_seconds ?? 600
+      const expirationTimeout = setTimeout(() => {
+        clearInterval(interval)
+        reject(new Error(`Timeout waiting for app ${appUUID} to be ready`))
+      }, timeout * 1000)
+
+      async function checkStatus() {
+        const deployments = (await listDeploymentsByAppUuid({
+          client,
+          path: {
+            uuid: appUUID
+          }
+        })) as unknown as {
+          data: { deployments: { commit: string; status: string }[] }
+        }
+        const deployment = deployments.data?.deployments.find(
+          (deployment) => deployment.commit === sha
+        )
+        if (deployment) {
+          if (deployment.status === 'finished') {
+            clearInterval(interval)
+            clearTimeout(expirationTimeout)
+            resolve(true)
+          }
+        } else {
+          console.log('No status found')
+          console.log(JSON.stringify(deployments.data, null, 2))
+        }
+      }
+
       const interval = setInterval(checkStatus, 1000)
       checkStatus()
     })
@@ -422,7 +437,8 @@ export default class Coolify {
     deploymentName,
     repository,
     gitBranch,
-    gitCommitSha
+    gitCommitSha,
+    reset_supabase_db
   }: {
     ephemeral: boolean
     checkedOutProjectDir: string
@@ -430,6 +446,7 @@ export default class Coolify {
     repository: string
     gitBranch: string
     gitCommitSha: string
+    reset_supabase_db?: boolean
   }) {
     const supabaseComponentName = `${deploymentName}-supabase`
     const {
@@ -461,7 +478,7 @@ export default class Coolify {
     )
 
     console.log('Waiting for backend to start')
-    await this.waitUntilServiceOrAppisReady({
+    await this.waitUntilServiceIsReady({
       serviceUUID: backendServiceUUID
     })
     console.log('Backend started')
@@ -476,7 +493,7 @@ export default class Coolify {
       serviceUUID: backendServiceUUID,
       deployToken: deploymentKey,
       checkedOutProjectDir,
-      resetDb: isNewSupabaseService,
+      resetDb: isNewSupabaseService || reset_supabase_db,
       postgresPassword: postgres_password
     })
 
@@ -556,8 +573,9 @@ export default class Coolify {
       })
       //Wait for frontend to start
       console.log('Waiting for frontend to start')
-      await this.waitUntilServiceOrAppisReady({
-        appUUID: appUUID
+      await this.waitUntilAppIsReady({
+        appUUID: appUUID,
+        sha: gitCommitSha
       })
       console.log('Frontend started')
     } else {
@@ -580,8 +598,9 @@ export default class Coolify {
           uuid: appUUID
         }
       })
-      await this.waitUntilServiceOrAppisReady({
-        appUUID: appUUID
+      await this.waitUntilAppIsReady({
+        appUUID: appUUID,
+        sha: gitCommitSha
       })
     }
 
