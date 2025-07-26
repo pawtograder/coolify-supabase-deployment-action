@@ -821,6 +821,10 @@ services:
       - 'VERIFY_JWT=${FUNCTIONS_VERIFY_JWT:-false}'
       - 'AWS_ACCESS_KEY_ID=${SERVICE_AWS_ACCESS_KEY_ID}'
       - 'AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}'
+      - 'GITHUB_APP_ID=${GITHUB_APP_ID}'
+      - 'GITHUB_OAUTH_CLIENT_ID=${GITHUB_OAUTH_CLIENT_ID}'
+      - 'GITHUB_OAUTH_CLIENT_SECRET=${GITHUB_OAUTH_CLIENT_SECRET}'
+      - 'GITHUB_PRIVATE_KEY_STRING=${GITHUB_PRIVATE_KEY_STRING}'
     volumes:
       - './volumes/functions:/home/deno/functions'
       - type: bind

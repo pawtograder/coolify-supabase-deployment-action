@@ -327,6 +327,30 @@ export default class Coolify {
             {
               key: 'ENABLE_PHONE_SIGNUP',
               value: 'false'
+            },
+            {
+              key: 'GITHUB_APP_ID',
+              value: process.env.GITHUB_APP_ID
+            },
+            {
+              key: 'GITHUB_OAUTH_CLIENT_ID',
+              value: process.env.GITHUB_OAUTH_CLIENT_ID
+            },
+            {
+              key: 'GITHUB_OAUTH_CLIENT_SECRET',
+              value: process.env.GITHUB_OAUTH_CLIENT_SECRET
+            },
+            {
+              key: 'GITHUB_PRIVATE_KEY_STRING',
+              value: process.env.GITHUB_PRIVATE_KEY_STRING
+            },
+            {
+              key: 'AWS_ACCESS_KEY_ID',
+              value: process.env.AWS_ACCESS_KEY_ID
+            },
+            {
+              key: 'AWS_SECRET_ACCESS_KEY',
+              value: process.env.AWS_SECRET_ACCESS_KEY
             }
           ]
         }
