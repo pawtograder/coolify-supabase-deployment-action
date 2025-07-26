@@ -575,7 +575,7 @@ services:
         condition: service_healthy
     environment:
       - 'PGRST_DB_URI=postgres://authenticator:${SERVICE_PASSWORD_POSTGRES}@${POSTGRES_HOSTNAME:-supabase-db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-postgres}'
-      - 'PGRST_DB_SCHEMAS=${PGRST_DB_SCHEMAS:-public,storage,graphql_public}'
+      - 'PGRST_DB_SCHEMAS=${PGRST_DB_SCHEMAS:-public,storage,graphql_public,pgmq_public}'
       - PGRST_DB_ANON_ROLE=anon
       - 'PGRST_JWT_SECRET=${SERVICE_PASSWORD_JWT}'
       - PGRST_DB_USE_LEGACY_GUCS=false
