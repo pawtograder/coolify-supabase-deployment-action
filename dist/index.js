@@ -45426,6 +45426,26 @@ const listEnvsByServiceUuid = (options) => {
     });
 };
 /**
+ * Update Env
+ * Update env by service UUID.
+ */
+const updateEnvByServiceUuid = (options) => {
+    return (options.client ?? client).patch({
+        security: [
+            {
+                scheme: 'bearer',
+                type: 'http'
+            }
+        ],
+        url: '/services/{uuid}/envs',
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            ...options.headers
+        }
+    });
+};
+/**
  * Create Env
  * Create env by service UUID.
  */
@@ -50656,9 +50676,22 @@ class Coolify {
             checkStatus();
         });
     }
-    async createEnvsForService({ serviceUUID, envs }) {
-        for (const env of envs) {
-            await createEnvByServiceUuid({
+    async createOrUpdateEnv({ serviceUUID, env }) {
+        if (!env.value) {
+            throw new Error(`Env ${env.key} has no value`);
+        }
+        const res = await updateEnvByServiceUuid({
+            client: this.client,
+            path: {
+                uuid: serviceUUID
+            },
+            body: {
+                key: env.key,
+                value: env.value
+            }
+        });
+        if (res.error && res.error.message === 'Environment variable not found.') {
+            const res2 = await createEnvByServiceUuid({
                 client: this.client,
                 path: {
                     uuid: serviceUUID
@@ -50667,6 +50700,20 @@ class Coolify {
                     key: env.key,
                     value: env.value
                 }
+            });
+            if (res2.error) {
+                throw new Error(`Error creating env ${env.key} for service ${serviceUUID}: ${res2.error.message}`);
+            }
+        }
+    }
+    async createEnvsForService({ serviceUUID, envs }) {
+        for (const env of envs) {
+            if (!env.value) {
+                throw new Error(`Env ${env.key} has no value`);
+            }
+            await this.createOrUpdateEnv({
+                serviceUUID,
+                env
             });
         }
     }
@@ -50737,12 +50784,9 @@ class Coolify {
             // Generate a random 64-character deployment key
             const deploymentKey = randomBytes(32).toString('hex');
             //Set the functions deployment key
-            await createEnvByServiceUuid({
-                client: this.client,
-                path: {
-                    uuid: backendServiceUUID
-                },
-                body: {
+            await this.createOrUpdateEnv({
+                serviceUUID: backendServiceUUID,
+                env: {
                     key: 'SERVICE_SUPABASE_FUNCTIONS_DEPLOYMENT_KEY',
                     value: deploymentKey
                 }
@@ -50817,12 +50861,9 @@ class Coolify {
         const supabase_service_role_key = getServiceEnvOrThrow('SERVICE_SUPABASESERVICE_KEY');
         const deploymentKey = getServiceEnvOrThrow('SERVICE_SUPABASE_FUNCTIONS_DEPLOYMENT_KEY');
         console.log(`SERVICE_SUPABASE_URL: ${supabase_url}`);
-        await createEnvByServiceUuid({
-            client: this.client,
-            path: {
-                uuid: backendServiceUUID
-            },
-            body: {
+        await this.createOrUpdateEnv({
+            serviceUUID: backendServiceUUID,
+            env: {
                 key: 'SERVICE_SUPABASE_URL',
                 value: supabase_url
             }
@@ -50885,6 +50926,16 @@ class Coolify {
             ephemeral
         });
         console.log(`Backend service UUID: ${backendServiceUUID}`);
+        if (backendServiceUUID !== '123') {
+            return {
+                serviceUUID: backendServiceUUID,
+                appUUID: '123',
+                appURL: `https://${deploymentName}.dev.pawtograder.net`,
+                supabase_url,
+                supabase_service_role_key,
+                supabase_anon_key
+            };
+        }
         const frontendAppName = `${deploymentName}-frontend`;
         //If there is already a frontend app with the target name, delete it
         const existingApplications = await listApplications({
