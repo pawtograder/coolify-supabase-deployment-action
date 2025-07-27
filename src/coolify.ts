@@ -12,20 +12,20 @@ import {
   createEnvByServiceUuid,
   createPrivateGithubAppApplication,
   createService,
-  deleteServiceByUuid,
   deleteApplicationByUuid,
+  deleteServiceByUuid,
+  deployByTagOrUuid,
   getServiceByUuid,
   listApplications,
+  listDeploymentsByAppUuid,
   listEnvsByServiceUuid,
   listServers,
   listServices,
   startApplicationByUuid,
   startServiceByUuid,
-  updateEnvsByServiceUuid,
-  updateServiceByUuid,
   updateApplicationByUuid,
-  deployByTagOrUuid,
-  listDeploymentsByAppUuid
+  updateEnvsByServiceUuid,
+  updateServiceByUuid
 } from './client/sdk.gen.js'
 import { TCPTunnelClient } from './tcp-tunnel.js'
 
@@ -216,6 +216,26 @@ export default class Coolify {
       checkStatus()
     })
   }
+  private async createEnvsForService({
+    serviceUUID,
+    envs
+  }: {
+    serviceUUID: string
+    envs: { key: string; value: string | undefined }[]
+  }) {
+    for (const env of envs) {
+      await createEnvByServiceUuid({
+        client: this.client,
+        path: {
+          uuid: serviceUUID
+        },
+        body: {
+          key: env.key,
+          value: env.value
+        }
+      })
+    }
+  }
 
   private async getServerUUID() {
     const servers = await listServers({ client: this.client })
@@ -313,6 +333,36 @@ export default class Coolify {
         }
       })
 
+      await this.createEnvsForService({
+        serviceUUID: backendServiceUUID,
+        envs: [
+          {
+            key: 'GITHUB_APP_ID',
+            value: process.env.GITHUB_APP_ID
+          },
+          {
+            key: 'GITHUB_OAUTH_CLIENT_ID',
+            value: process.env.GITHUB_OAUTH_CLIENT_ID
+          },
+          {
+            key: 'GITHUB_OAUTH_CLIENT_SECRET',
+            value: process.env.GITHUB_OAUTH_CLIENT_SECRET
+          },
+          {
+            key: 'GITHUB_PRIVATE_KEY_STRING',
+            value: process.env.GITHUB_PRIVATE_KEY_STRING
+          },
+          {
+            key: 'AWS_ACCESS_KEY_ID',
+            value: process.env.AWS_ACCESS_KEY_ID
+          },
+          {
+            key: 'AWS_SECRET_ACCESS_KEY',
+            value: process.env.AWS_SECRET_ACCESS_KEY
+          }
+        ]
+      })
+
       await updateEnvsByServiceUuid({
         client: this.client,
         path: {
@@ -327,30 +377,6 @@ export default class Coolify {
             {
               key: 'ENABLE_PHONE_SIGNUP',
               value: 'false'
-            },
-            {
-              key: 'GITHUB_APP_ID',
-              value: process.env.GITHUB_APP_ID
-            },
-            {
-              key: 'GITHUB_OAUTH_CLIENT_ID',
-              value: process.env.GITHUB_OAUTH_CLIENT_ID
-            },
-            {
-              key: 'GITHUB_OAUTH_CLIENT_SECRET',
-              value: process.env.GITHUB_OAUTH_CLIENT_SECRET
-            },
-            {
-              key: 'GITHUB_PRIVATE_KEY_STRING',
-              value: process.env.GITHUB_PRIVATE_KEY_STRING
-            },
-            {
-              key: 'AWS_ACCESS_KEY_ID',
-              value: process.env.AWS_ACCESS_KEY_ID
-            },
-            {
-              key: 'AWS_SECRET_ACCESS_KEY',
-              value: process.env.AWS_SECRET_ACCESS_KEY
             }
           ]
         }
@@ -385,6 +411,7 @@ export default class Coolify {
       'SERVICE_SUPABASE_FUNCTIONS_DEPLOYMENT_KEY'
     )
 
+    console.log(`SERVICE_SUPABASE_URL: ${supabase_url}`)
     await createEnvByServiceUuid({
       client: this.client,
       path: {

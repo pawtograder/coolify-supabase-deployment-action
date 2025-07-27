@@ -50656,6 +50656,20 @@ class Coolify {
             checkStatus();
         });
     }
+    async createEnvsForService({ serviceUUID, envs }) {
+        for (const env of envs) {
+            await createEnvByServiceUuid({
+                client: this.client,
+                path: {
+                    uuid: serviceUUID
+                },
+                body: {
+                    key: env.key,
+                    value: env.value
+                }
+            });
+        }
+    }
     async getServerUUID() {
         const servers = await listServers({ client: this.client });
         console.log(servers);
@@ -50733,6 +50747,35 @@ class Coolify {
                     value: deploymentKey
                 }
             });
+            await this.createEnvsForService({
+                serviceUUID: backendServiceUUID,
+                envs: [
+                    {
+                        key: 'GITHUB_APP_ID',
+                        value: process.env.GITHUB_APP_ID
+                    },
+                    {
+                        key: 'GITHUB_OAUTH_CLIENT_ID',
+                        value: process.env.GITHUB_OAUTH_CLIENT_ID
+                    },
+                    {
+                        key: 'GITHUB_OAUTH_CLIENT_SECRET',
+                        value: process.env.GITHUB_OAUTH_CLIENT_SECRET
+                    },
+                    {
+                        key: 'GITHUB_PRIVATE_KEY_STRING',
+                        value: process.env.GITHUB_PRIVATE_KEY_STRING
+                    },
+                    {
+                        key: 'AWS_ACCESS_KEY_ID',
+                        value: process.env.AWS_ACCESS_KEY_ID
+                    },
+                    {
+                        key: 'AWS_SECRET_ACCESS_KEY',
+                        value: process.env.AWS_SECRET_ACCESS_KEY
+                    }
+                ]
+            });
             await updateEnvsByServiceUuid({
                 client: this.client,
                 path: {
@@ -50773,6 +50816,7 @@ class Coolify {
         const supabase_anon_key = getServiceEnvOrThrow('SERVICE_SUPABASEANON_KEY');
         const supabase_service_role_key = getServiceEnvOrThrow('SERVICE_SUPABASESERVICE_KEY');
         const deploymentKey = getServiceEnvOrThrow('SERVICE_SUPABASE_FUNCTIONS_DEPLOYMENT_KEY');
+        console.log(`SERVICE_SUPABASE_URL: ${supabase_url}`);
         await createEnvByServiceUuid({
             client: this.client,
             path: {
