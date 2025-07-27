@@ -50926,16 +50926,6 @@ class Coolify {
             ephemeral
         });
         console.log(`Backend service UUID: ${backendServiceUUID}`);
-        if (backendServiceUUID !== '123') {
-            return {
-                serviceUUID: backendServiceUUID,
-                appUUID: '123',
-                appURL: `https://${deploymentName}.dev.pawtograder.net`,
-                supabase_url,
-                supabase_service_role_key,
-                supabase_anon_key
-            };
-        }
         const frontendAppName = `${deploymentName}-frontend`;
         //If there is already a frontend app with the target name, delete it
         const existingApplications = await listApplications({
