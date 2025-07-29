@@ -154,7 +154,10 @@ export default class Coolify {
           }
         })
         if (serviceStatus.data && 'status' in serviceStatus.data) {
-          if (serviceStatus.data['status'] === 'running:healthy') {
+          if (
+            serviceStatus.data['status'] === 'running:healthy' ||
+            serviceStatus.data['status'] === 'finished'
+          ) {
             clearInterval(interval)
             clearTimeout(expirationTimeout)
             resolve(true)
