@@ -50686,7 +50686,8 @@ class Coolify {
             },
             body: {
                 key: env.key,
-                value: env.value
+                value: env.value,
+                is_multiline: env.isMultiLine
             }
         });
         if (res.error && res.error.message === 'Environment variable not found.') {
@@ -50697,7 +50698,8 @@ class Coolify {
                 },
                 body: {
                     key: env.key,
-                    value: env.value
+                    value: env.value,
+                    is_multiline: env.isMultiLine
                 }
             });
             if (res2.error) {
@@ -50807,7 +50809,8 @@ class Coolify {
                     },
                     {
                         key: 'GITHUB_PRIVATE_KEY_STRING',
-                        value: process.env.GITHUB_PRIVATE_KEY_STRING
+                        value: process.env.GITHUB_PRIVATE_KEY_STRING?.replace(/\\n/g, '\n'),
+                        isMultiLine: true
                     },
                     {
                         key: 'AWS_ACCESS_KEY_ID',

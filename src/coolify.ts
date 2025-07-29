@@ -228,7 +228,7 @@ export default class Coolify {
     env
   }: {
     serviceUUID: string
-    env: { key: string; value: string | undefined }
+    env: { key: string; value: string | undefined; isMultiLine?: boolean }
   }) {
     if (!env.value) {
       throw new Error(`Env ${env.key} has no value`)
@@ -240,7 +240,8 @@ export default class Coolify {
       },
       body: {
         key: env.key,
-        value: env.value
+        value: env.value,
+        is_multiline: env.isMultiLine
       }
     })
     if (res.error && res.error.message === 'Environment variable not found.') {
@@ -251,7 +252,8 @@ export default class Coolify {
         },
         body: {
           key: env.key,
-          value: env.value
+          value: env.value,
+          is_multiline: env.isMultiLine
         }
       })
       if (res2.error) {
@@ -266,7 +268,7 @@ export default class Coolify {
     envs
   }: {
     serviceUUID: string
-    envs: { key: string; value: string | undefined }[]
+    envs: { key: string; value: string | undefined; isMultiLine?: boolean }[]
   }) {
     for (const env of envs) {
       if (!env.value) {
@@ -389,7 +391,8 @@ export default class Coolify {
           },
           {
             key: 'GITHUB_PRIVATE_KEY_STRING',
-            value: process.env.GITHUB_PRIVATE_KEY_STRING
+            value: process.env.GITHUB_PRIVATE_KEY_STRING?.replace(/\\n/g, '\n'),
+            isMultiLine: true
           },
           {
             key: 'AWS_ACCESS_KEY_ID',
