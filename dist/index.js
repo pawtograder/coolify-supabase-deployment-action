@@ -50628,8 +50628,7 @@ class Coolify {
                     }
                 });
                 if (serviceStatus.data && 'status' in serviceStatus.data) {
-                    if (serviceStatus.data['status'] === 'running:healthy' ||
-                        serviceStatus.data['status'] === 'finished') {
+                    if (serviceStatus.data['status'] === 'running:healthy') {
                         clearInterval(interval);
                         clearTimeout(expirationTimeout);
                         resolve(true);
@@ -50665,8 +50664,11 @@ class Coolify {
                     }
                 }
                 else {
-                    console.log('No status found');
-                    console.log(JSON.stringify(deployments.data, null, 2));
+                    console.log('No status found for SHA: ' + sha);
+                    console.log(JSON.stringify(deployments.data.deployments.map((d) => ({
+                        commit: d.commit,
+                        status: d.status
+                    })), null, 2));
                 }
             }
             const interval = setInterval(checkStatus, 1000);

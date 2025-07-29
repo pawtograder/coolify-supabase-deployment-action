@@ -154,10 +154,7 @@ export default class Coolify {
           }
         })
         if (serviceStatus.data && 'status' in serviceStatus.data) {
-          if (
-            serviceStatus.data['status'] === 'running:healthy' ||
-            serviceStatus.data['status'] === 'finished'
-          ) {
+          if (serviceStatus.data['status'] === 'running:healthy') {
             clearInterval(interval)
             clearTimeout(expirationTimeout)
             resolve(true)
@@ -170,7 +167,7 @@ export default class Coolify {
     })
   }
 
-  private async waitUntilAppIsReady({
+  public async waitUntilAppIsReady({
     appUUID,
     sha,
     timeout_seconds
@@ -208,8 +205,17 @@ export default class Coolify {
             resolve(true)
           }
         } else {
-          console.log('No status found')
-          console.log(JSON.stringify(deployments.data, null, 2))
+          console.log('No status found for SHA: ' + sha)
+          console.log(
+            JSON.stringify(
+              deployments.data.deployments.map((d) => ({
+                commit: d.commit,
+                status: d.status
+              })),
+              null,
+              2
+            )
+          )
         }
       }
 
