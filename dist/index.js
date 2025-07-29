@@ -50634,10 +50634,6 @@ class Coolify {
                         resolve(true);
                     }
                 }
-                else {
-                    console.log('No status found');
-                    console.log(JSON.stringify(serviceStatus.data, null, 2));
-                }
             }
             const interval = setInterval(checkStatus, 1000);
             checkStatus();

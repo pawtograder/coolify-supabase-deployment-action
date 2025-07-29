@@ -159,9 +159,6 @@ export default class Coolify {
             clearTimeout(expirationTimeout)
             resolve(true)
           }
-        } else {
-          console.log('No status found')
-          console.log(JSON.stringify(serviceStatus.data, null, 2))
         }
       }
 
