@@ -196,7 +196,8 @@ export default class Coolify {
           data: { deployments: { commit: string; status: string }[] }
         }
         const deployment = deployments.data?.deployments.find(
-          (deployment) => deployment.commit === sha
+          (deployment) =>
+            deployment.commit === sha || deployment.commit === 'HEAD'
         )
         if (deployment) {
           if (deployment.status === 'finished') {
