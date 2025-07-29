@@ -50615,7 +50615,7 @@ class Coolify {
         const client = this.client;
         console.log(`Waiting for service ${serviceUUID} to be ready`);
         return new Promise((resolve, reject) => {
-            const timeout = timeout_seconds ?? 600;
+            const timeout = timeout_seconds ?? 1200;
             const expirationTimeout = setTimeout(() => {
                 clearInterval(interval);
                 reject(new Error(`Timeout waiting for service ${serviceUUID} to be ready`));
