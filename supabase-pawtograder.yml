@@ -824,6 +824,7 @@ services:
       - 'GITHUB_OAUTH_CLIENT_ID=${GITHUB_OAUTH_CLIENT_ID}'
       - 'GITHUB_OAUTH_CLIENT_SECRET=${GITHUB_OAUTH_CLIENT_SECRET}'
       - 'GITHUB_PRIVATE_KEY_STRING=${GITHUB_PRIVATE_KEY_STRING}'
+      - 'EDGE_FUNCTION_SECRET=${EDGE_FUNCTION_SECRET}'
     volumes:
       - './volumes/functions:/home/deno/functions'
       - type: bind

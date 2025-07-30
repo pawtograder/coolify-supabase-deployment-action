@@ -290,6 +290,55 @@ export default class Coolify {
     }
     return servers.data[0].uuid
   }
+  async updateSecrets({
+    serviceUUID,
+    postgres_db,
+    postgres_password,
+    edgeFunctionSecret,
+    deployToken,
+    supabase_url
+  }: {
+    serviceUUID: string
+    postgres_db: string
+    postgres_password: string
+    deployToken: string
+    edgeFunctionSecret: string
+    supabase_url: string
+  }) {
+    const localPort = 5432
+    const tunnel = new TCPTunnelClient(
+      `${this.supabase_api_url}/${serviceUUID}/postgres`,
+      localPort,
+      deployToken
+    )
+    console.log(`Starting a tunnel to postgres on local port ${localPort}`)
+    await tunnel.connect()
+    console.log('Tunnel connected')
+    const sql = postgres(
+      `postgres://postgres:${postgres_password}@localhost:${localPort}/${postgres_db}`
+    )
+    const existingEdgeFunctionSecret =
+      await sql`SELECT id FROM vault.decrypted_secrets where name = 'edge-function-secret'`
+    const edgeFunctionSecretUUID =
+      existingEdgeFunctionSecret.length > 0
+        ? existingEdgeFunctionSecret[0].id
+        : null
+    const existingSupabaseProjectURLSecret =
+      await sql`SELECT id FROM vault.decrypted_secrets where name = 'supabase_project_url'`
+    const supabaseProjectURLSecretUUID =
+      existingSupabaseProjectURLSecret.length > 0
+        ? existingSupabaseProjectURLSecret[0].id
+        : null
+    if (edgeFunctionSecretUUID) {
+      await sql`SELECT vault.update_secret(${edgeFunctionSecretUUID}, ${edgeFunctionSecret}, 'edge-function-secret', 'Generated secret for edge functions invoked by postgres')`
+    }
+    if (supabaseProjectURLSecretUUID) {
+      await sql`SELECT vault.update_secret(${supabaseProjectURLSecretUUID}, ${supabase_url}, 'supabase_project_url', 'Generated supabase project url')`
+    }
+    await sql.end()
+    await tunnel.disconnect()
+    console.log('Secrets updated')
+  }
   private async getSupabaseServiceUUIDOrCreateNewOne({
     supabaseComponentName,
     ephemeral
@@ -374,6 +423,8 @@ export default class Coolify {
           value: deploymentKey
         }
       })
+      // Generate a random 64-character edge function secret
+      const edgeFunctionSecret = randomBytes(32).toString('hex')
 
       await this.createEnvsForService({
         serviceUUID: backendServiceUUID,
@@ -402,6 +453,10 @@ export default class Coolify {
           {
             key: 'AWS_SECRET_ACCESS_KEY',
             value: process.env.AWS_SECRET_ACCESS_KEY
+          },
+          {
+            key: 'EDGE_FUNCTION_SECRET',
+            value: edgeFunctionSecret
           }
         ]
       })
@@ -453,6 +508,7 @@ export default class Coolify {
     const deploymentKey = getServiceEnvOrThrow(
       'SERVICE_SUPABASE_FUNCTIONS_DEPLOYMENT_KEY'
     )
+    const edgeFunctionSecret = getServiceEnvOrThrow('EDGE_FUNCTION_SECRET')
 
     console.log(`SERVICE_SUPABASE_URL: ${supabase_url}`)
     await this.createOrUpdateEnv({
@@ -469,6 +525,15 @@ export default class Coolify {
         path: {
           uuid: backendServiceUUID
         }
+      })
+      //Update vault secrets
+      await this.updateSecrets({
+        serviceUUID: backendServiceUUID,
+        deployToken: deploymentKey,
+        postgres_db,
+        postgres_password,
+        edgeFunctionSecret,
+        supabase_url
       })
     }
     return {
