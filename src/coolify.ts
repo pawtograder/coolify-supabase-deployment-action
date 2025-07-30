@@ -323,18 +323,20 @@ export default class Coolify {
       existingEdgeFunctionSecret.length > 0
         ? existingEdgeFunctionSecret[0].id
         : null
+    if (!edgeFunctionSecretUUID) {
+      throw new Error('Edge function secret not found in vault')
+    }
     const existingSupabaseProjectURLSecret =
       await sql`SELECT id FROM vault.decrypted_secrets where name = 'supabase_project_url'`
     const supabaseProjectURLSecretUUID =
       existingSupabaseProjectURLSecret.length > 0
         ? existingSupabaseProjectURLSecret[0].id
         : null
-    if (edgeFunctionSecretUUID) {
-      await sql`SELECT vault.update_secret(${edgeFunctionSecretUUID}, ${edgeFunctionSecret}, 'edge-function-secret', 'Generated secret for edge functions invoked by postgres')`
+    if (!supabaseProjectURLSecretUUID) {
+      throw new Error('Supabase project url secret not found in vault')
     }
-    if (supabaseProjectURLSecretUUID) {
-      await sql`SELECT vault.update_secret(${supabaseProjectURLSecretUUID}, ${supabase_url}, 'supabase_project_url', 'Generated supabase project url')`
-    }
+    await sql`SELECT vault.update_secret(${edgeFunctionSecretUUID}, ${edgeFunctionSecret}, 'edge-function-secret', 'Generated secret for edge functions invoked by postgres')`
+    await sql`SELECT vault.update_secret(${supabaseProjectURLSecretUUID}, ${supabase_url}, 'supabase_project_url', 'Generated supabase project url')`
     await sql.end()
     await tunnel.disconnect()
     console.log('Secrets updated')
@@ -509,7 +511,6 @@ export default class Coolify {
       'SERVICE_SUPABASE_FUNCTIONS_DEPLOYMENT_KEY'
     )
     const edgeFunctionSecret = getServiceEnvOrThrow('EDGE_FUNCTION_SECRET')
-
     console.log(`SERVICE_SUPABASE_URL: ${supabase_url}`)
     await this.createOrUpdateEnv({
       serviceUUID: backendServiceUUID,
@@ -526,15 +527,6 @@ export default class Coolify {
           uuid: backendServiceUUID
         }
       })
-      //Update vault secrets
-      await this.updateSecrets({
-        serviceUUID: backendServiceUUID,
-        deployToken: deploymentKey,
-        postgres_db,
-        postgres_password,
-        edgeFunctionSecret,
-        supabase_url
-      })
     }
     return {
       backendServiceUUID,
@@ -546,7 +538,8 @@ export default class Coolify {
       supabase_anon_key,
       supabase_service_role_key,
       deploymentKey,
-      isNewSupabaseService
+      isNewSupabaseService,
+      edgeFunctionSecret
     }
   }
   async cleanup({
@@ -615,7 +608,8 @@ export default class Coolify {
       supabase_anon_key,
       supabase_service_role_key,
       deploymentKey,
-      isNewSupabaseService
+      isNewSupabaseService,
+      edgeFunctionSecret
     } = await this.getSupabaseServiceUUIDOrCreateNewOne({
       supabaseComponentName,
       ephemeral
@@ -652,6 +646,17 @@ export default class Coolify {
       resetDb: isNewSupabaseService || reset_supabase_db,
       postgresPassword: postgres_password
     })
+    if (isNewSupabaseService) {
+      //Update vault secrets
+      await this.updateSecrets({
+        serviceUUID: backendServiceUUID,
+        deployToken: deploymentKey,
+        postgres_db,
+        postgres_password,
+        edgeFunctionSecret,
+        supabase_url
+      })
+    }
 
     const existingFrontendApp = existingApplications.data?.find(
       (app) => app.name === frontendAppName
