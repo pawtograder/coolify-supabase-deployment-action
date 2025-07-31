@@ -50852,6 +50852,10 @@ class Coolify {
                     {
                         key: 'EDGE_FUNCTION_SECRET',
                         value: edgeFunctionSecret
+                    },
+                    {
+                        key: 'PGRST_DB_SCHEMAS',
+                        value: 'public,graphql_public,pgmq_public'
                     }
                 ]
             });
