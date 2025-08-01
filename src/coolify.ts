@@ -648,7 +648,9 @@ export default class Coolify {
       deployToken: deploymentKey,
       checkedOutProjectDir,
       resetDb: isNewSupabaseService || reset_supabase_db,
-      postgresPassword: postgres_password
+      postgresPassword: postgres_password,
+      supabase_url: supabase_url,
+      edgeFunctionSecret: edgeFunctionSecret
     })
     if (isNewSupabaseService) {
       //Update vault secrets
@@ -784,13 +786,17 @@ export default class Coolify {
     deployToken,
     checkedOutProjectDir,
     postgresPassword,
-    resetDb
+    resetDb,
+    supabase_url,
+    edgeFunctionSecret
   }: {
     serviceUUID: string
     deployToken: string
     checkedOutProjectDir: string
     postgresPassword: string
     resetDb?: boolean
+    supabase_url: string
+    edgeFunctionSecret: string
   }) {
     const localPort = 5432
     const tunnel = new TCPTunnelClient(
@@ -820,5 +826,16 @@ export default class Coolify {
     })
     console.log('Migrations pushed')
     tunnel.disconnect()
+    if (resetDb) {
+      //Need to re-set the vault secrets that get overwritten with dev defaults
+      await this.updateSecrets({
+        serviceUUID: serviceUUID,
+        deployToken: deployToken,
+        postgres_db: 'postgres',
+        postgres_password: postgresPassword,
+        edgeFunctionSecret: edgeFunctionSecret,
+        supabase_url: supabase_url
+      })
+    }
   }
 }
