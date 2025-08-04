@@ -51075,7 +51075,8 @@ class Coolify {
             console.log('Waiting for frontend to start');
             await this.waitUntilAppIsReady({
                 appUUID: appUUID,
-                sha: gitCommitSha
+                sha: gitCommitSha,
+                timeout_seconds: 20 * 60 //20 minutes, woof
             });
             console.log('Frontend started');
         }
