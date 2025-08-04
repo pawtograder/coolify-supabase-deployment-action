@@ -51100,7 +51100,8 @@ class Coolify {
             });
             await this.waitUntilAppIsReady({
                 appUUID: appUUID,
-                sha: gitCommitSha
+                sha: gitCommitSha,
+                timeout_seconds: 20 * 60 //20 minutes, woof
             });
         }
         return {
