@@ -272,7 +272,7 @@ export default class Coolify {
     envs: { key: string; value: string | undefined; isMultiLine?: boolean }[]
   }) {
     for (const env of envs) {
-      if (!env.value) {
+      if (!env.value && env.key !== 'SENTRY_DSN') {
         throw new Error(`Env ${env.key} has no value`)
       }
       await this.createOrUpdateEnv({
@@ -463,6 +463,10 @@ export default class Coolify {
           {
             key: 'PGRST_DB_SCHEMAS',
             value: 'public,graphql_public,pgmq_public'
+          },
+          {
+            key: 'SENTRY_DSN',
+            value: process.env.SENTRY_DSN
           }
         ]
       })

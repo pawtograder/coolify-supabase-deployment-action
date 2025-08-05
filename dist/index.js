@@ -50709,7 +50709,7 @@ class Coolify {
     }
     async createEnvsForService({ serviceUUID, envs }) {
         for (const env of envs) {
-            if (!env.value) {
+            if (!env.value && env.key !== 'SENTRY_DSN') {
                 throw new Error(`Env ${env.key} has no value`);
             }
             await this.createOrUpdateEnv({
@@ -50856,6 +50856,10 @@ class Coolify {
                     {
                         key: 'PGRST_DB_SCHEMAS',
                         value: 'public,graphql_public,pgmq_public'
+                    },
+                    {
+                        key: 'SENTRY_DSN',
+                        value: process.env.SENTRY_DSN
                     }
                 ]
             });
