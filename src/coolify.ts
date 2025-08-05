@@ -269,10 +269,15 @@ export default class Coolify {
     envs
   }: {
     serviceUUID: string
-    envs: { key: string; value: string | undefined; isMultiLine?: boolean }[]
+    envs: {
+      key: string
+      value: string | undefined
+      isMultiLine?: boolean
+      optional?: boolean
+    }[]
   }) {
     for (const env of envs) {
-      if (!env.value && env.key !== 'SENTRY_DSN') {
+      if (!env.value && !env.optional) {
         throw new Error(`Env ${env.key} has no value`)
       }
       await this.createOrUpdateEnv({
@@ -466,7 +471,18 @@ export default class Coolify {
           },
           {
             key: 'SENTRY_DSN',
-            value: process.env.SENTRY_DSN
+            value: process.env.SENTRY_DSN,
+            optional: true
+          },
+          {
+            key: 'UPSTASH_REDIS_REST_URL',
+            value: process.env.UPSTASH_REDIS_REST_URL,
+            optional: true
+          },
+          {
+            key: 'UPSTASH_REDIS_REST_TOKEN',
+            value: process.env.UPSTASH_REDIS_REST_TOKEN,
+            optional: true
           }
         ]
       })
