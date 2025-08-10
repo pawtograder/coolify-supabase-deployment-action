@@ -36,8 +36,8 @@ export async function run() {
 
   const deploymentName =
     ephemeral.toLowerCase() === 'true'
-      ? `${branchOrPR}-${randomUUID()}`
-      : branchOrPR
+      ? `${branchOrPR.replace('/', '-')}-${randomUUID()}`
+      : branchOrPR.replace('/', '-')
 
   if (cleanup_service_uuid || cleanup_app_uuid) {
     await coolify.cleanup({

@@ -51196,8 +51196,8 @@ async function run() {
         throw new Error('GITHUB_REF_NAME and GITHUB_REPOSITORY must be set');
     }
     const deploymentName = ephemeral.toLowerCase() === 'true'
-        ? `${branchOrPR}-${randomUUID()}`
-        : branchOrPR;
+        ? `${branchOrPR.replace('/', '-')}-${randomUUID()}`
+        : branchOrPR.replace('/', '-');
     if (cleanup_service_uuid || cleanup_app_uuid) {
         await coolify.cleanup({
             cleanup_service_uuid,
