@@ -50559,7 +50559,8 @@ class Coolify {
     base_deployment_url;
     deployment_app_uuid;
     supabase_api_url;
-    constructor({ baseUrl, token, project_uuid, environment_uuid, environment_name, server_uuid, supabase_api_url, base_deployment_url, deployment_app_uuid }) {
+    bugsink_dsn;
+    constructor({ baseUrl, token, project_uuid, environment_uuid, environment_name, server_uuid, supabase_api_url, base_deployment_url, deployment_app_uuid, bugsink_dsn }) {
         this.client = createClient({
             baseUrl,
             auth: async () => {
@@ -50573,6 +50574,7 @@ class Coolify {
         this.supabase_api_url = supabase_api_url;
         this.base_deployment_url = base_deployment_url;
         this.deployment_app_uuid = deployment_app_uuid;
+        this.bugsink_dsn = bugsink_dsn;
     }
     async deployFunctions({ token, serviceUuid, folderPath }) {
         const zip = new JSZip();
@@ -51077,7 +51079,15 @@ class Coolify {
                 { key: 'POSTGRES_PASSWORD', value: postgres_password },
                 { key: 'SUPABASE_SERVICE_ROLE_KEY', value: supabase_service_role_key },
                 { key: 'NEXT_PUBLIC_SUPABASE_URL', value: supabase_url },
-                { key: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', value: supabase_anon_key }
+                { key: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', value: supabase_anon_key },
+                {
+                    key: 'NEXT_PUBLIC_BUGSINK_DSN',
+                    value: this.bugsink_dsn
+                },
+                {
+                    key: 'NEXT_PUBLIC_BUGSINK_HOST',
+                    value: extractHostFromDsn(this.bugsink_dsn)
+                }
             ]);
             //Deploy the frontend
             await startApplicationByUuid({
@@ -51164,6 +51174,10 @@ class Coolify {
         }
     }
 }
+function extractHostFromDsn(bugsink_dsn) {
+    const url = new URL(bugsink_dsn);
+    return url.protocol + '//' + url.hostname;
+}
 
 async function run() {
     const coolify_api_url = coreExports.getInput('coolify_api_url');
@@ -51179,6 +51193,7 @@ async function run() {
     const cleanup_service_uuid = coreExports.getInput('cleanup_service_uuid');
     const cleanup_app_uuid = coreExports.getInput('cleanup_app_uuid');
     const reset_supabase_db = coreExports.getInput('reset_supabase_db');
+    const bugsink_dsn = coreExports.getInput('bugsink_dsn');
     const coolify = new Coolify({
         baseUrl: coolify_api_url,
         token: coolify_api_token,
@@ -51188,7 +51203,8 @@ async function run() {
         server_uuid: coolify_server_uuid,
         supabase_api_url: coolify_supabase_api_url,
         base_deployment_url,
-        deployment_app_uuid
+        deployment_app_uuid,
+        bugsink_dsn
     });
     const branchOrPR = process.env.GITHUB_REF_NAME;
     const repositoryName = process.env.GITHUB_REPOSITORY;

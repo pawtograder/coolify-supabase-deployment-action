@@ -73,6 +73,13 @@ inputs:
     required: false
     default: false
     type: boolean
+  bugsink_dsn:
+    description:
+      The DSN for the Bugsink service. This is used to send errors to the
+      Bugsink service.
+    required: false
+    default: ''
+    type: string
 
 # Define your outputs here.
 outputs:

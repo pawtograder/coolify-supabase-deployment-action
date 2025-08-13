@@ -38,7 +38,8 @@ export default class Coolify {
   private readonly server_uuid?: string
   private readonly base_deployment_url: string
   private readonly deployment_app_uuid: string
-  supabase_api_url: string
+  private readonly supabase_api_url: string
+  private readonly bugsink_dsn: string
 
   constructor({
     baseUrl,
@@ -49,7 +50,8 @@ export default class Coolify {
     server_uuid,
     supabase_api_url,
     base_deployment_url,
-    deployment_app_uuid
+    deployment_app_uuid,
+    bugsink_dsn
   }: {
     baseUrl: string
     token: string
@@ -60,6 +62,7 @@ export default class Coolify {
     server_uuid?: string
     base_deployment_url: string
     deployment_app_uuid: string
+    bugsink_dsn: string
   }) {
     this.client = createClient({
       baseUrl,
@@ -74,6 +77,7 @@ export default class Coolify {
     this.supabase_api_url = supabase_api_url
     this.base_deployment_url = base_deployment_url
     this.deployment_app_uuid = deployment_app_uuid
+    this.bugsink_dsn = bugsink_dsn
   }
   async deployFunctions({
     token,
@@ -748,7 +752,15 @@ export default class Coolify {
         { key: 'POSTGRES_PASSWORD', value: postgres_password },
         { key: 'SUPABASE_SERVICE_ROLE_KEY', value: supabase_service_role_key },
         { key: 'NEXT_PUBLIC_SUPABASE_URL', value: supabase_url },
-        { key: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', value: supabase_anon_key }
+        { key: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', value: supabase_anon_key },
+        {
+          key: 'NEXT_PUBLIC_BUGSINK_DSN',
+          value: this.bugsink_dsn
+        },
+        {
+          key: 'NEXT_PUBLIC_BUGSINK_HOST',
+          value: extractHostFromDsn(this.bugsink_dsn)
+        }
       ])
 
       //Deploy the frontend
@@ -860,4 +872,8 @@ export default class Coolify {
       })
     }
   }
+}
+function extractHostFromDsn(bugsink_dsn: string): string {
+  const url = new URL(bugsink_dsn)
+  return url.protocol + '//' + url.hostname
 }

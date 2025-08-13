@@ -16,6 +16,7 @@ export async function run() {
   const cleanup_service_uuid = getInput('cleanup_service_uuid')
   const cleanup_app_uuid = getInput('cleanup_app_uuid')
   const reset_supabase_db = getInput('reset_supabase_db')
+  const bugsink_dsn = getInput('bugsink_dsn')
 
   const coolify = new Coolify({
     baseUrl: coolify_api_url,
@@ -26,7 +27,8 @@ export async function run() {
     server_uuid: coolify_server_uuid,
     supabase_api_url: coolify_supabase_api_url,
     base_deployment_url,
-    deployment_app_uuid
+    deployment_app_uuid,
+    bugsink_dsn
   })
   const branchOrPR = process.env.GITHUB_REF_NAME
   const repositoryName = process.env.GITHUB_REPOSITORY
