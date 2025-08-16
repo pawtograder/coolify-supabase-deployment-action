@@ -760,6 +760,10 @@ export default class Coolify {
         {
           key: 'NEXT_PUBLIC_BUGSINK_HOST',
           value: extractHostFromDsn(this.bugsink_dsn)
+        },
+        {
+          key: 'VERCEL_GIT_COMMIT_SHA',
+          value: '$SOURCE_COMMIT'
         }
       ])
 
