@@ -50657,6 +50657,10 @@ class Coolify {
                         uuid: appUUID
                     }
                 }));
+                if (!deployments.data) {
+                    console.error(deployments);
+                    throw new Error(`Error getting deployments for app ${appUUID}: ${JSON.stringify(deployments)}`);
+                }
                 const deployment = deployments.data?.deployments.find((deployment) => deployment.commit === sha || deployment.commit === 'HEAD');
                 if (deployment) {
                     if (deployment.status === 'finished') {

@@ -199,6 +199,14 @@ export default class Coolify {
         })) as unknown as {
           data: { deployments: { commit: string; status: string }[] }
         }
+        if (!deployments.data) {
+          console.error(deployments)
+          throw new Error(
+            `Error getting deployments for app ${appUUID}: ${JSON.stringify(
+              deployments
+            )}`
+          )
+        }
         const deployment = deployments.data?.deployments.find(
           (deployment) =>
             deployment.commit === sha || deployment.commit === 'HEAD'
