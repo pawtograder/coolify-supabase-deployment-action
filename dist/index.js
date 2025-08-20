@@ -50637,7 +50637,7 @@ class Coolify {
                     }
                 }
             }
-            const interval = setInterval(checkStatus, 1000);
+            const interval = setInterval(checkStatus, 5000);
             checkStatus();
         });
     }
@@ -50677,7 +50677,7 @@ class Coolify {
                     })), null, 2));
                 }
             }
-            const interval = setInterval(checkStatus, 1000);
+            const interval = setInterval(checkStatus, 5000);
             checkStatus();
         });
     }
