@@ -50641,6 +50641,37 @@ class Coolify {
             checkStatus();
         });
     }
+    async checkIfDeploymentUnderway({ appUUID, sha }) {
+        const client = this.client;
+        try {
+            const deployments = (await listDeploymentsByAppUuid({
+                client,
+                path: {
+                    uuid: appUUID
+                }
+            }));
+            if (!deployments.data) {
+                return false;
+            }
+            const deployment = deployments.data?.deployments.find((deployment) => deployment.commit === sha || deployment.commit === 'HEAD');
+            if (deployment) {
+                // Check if deployment is in progress or finished (not failed, or cancelled)
+                const inProgressStatuses = [
+                    'running',
+                    'queued',
+                    'in_progress',
+                    'finished',
+                    'pending'
+                ];
+                return inProgressStatuses.includes(deployment.status);
+            }
+            return false;
+        }
+        catch (error) {
+            console.warn(`Error checking deployment status: ${error}`);
+            return false;
+        }
+    }
     async waitUntilAppIsReady({ appUUID, sha, timeout_seconds }) {
         const client = this.client;
         console.log(`Waiting for app ${appUUID} to be ready`);
@@ -50993,9 +51024,6 @@ class Coolify {
         const existingApplications = await listApplications({
             client: this.client
         });
-        console.log(`Existing applications: ${existingApplications.data
-            ?.map((app) => app.name)
-            .join(', ')}`);
         console.log('Waiting for backend to start');
         await this.waitUntilServiceIsReady({
             serviceUUID: backendServiceUUID
@@ -51114,23 +51142,33 @@ class Coolify {
             console.log('Frontend started');
         }
         else {
-            //Update the commit SHA of the frontend app
-            await updateApplicationByUuid({
-                client: this.client,
-                path: {
-                    uuid: appUUID
-                },
-                body: {
-                    git_commit_sha: gitCommitSha
-                }
+            // Check if deployment is already underway for this commit
+            const deploymentUnderway = await this.checkIfDeploymentUnderway({
+                appUUID: appUUID,
+                sha: gitCommitSha
             });
-            console.log(`Deploying frontend app ${appUUID} with commit ${gitCommitSha}`);
-            await deployByTagOrUuid({
-                client: this.client,
-                query: {
-                    uuid: appUUID
-                }
-            });
+            if (deploymentUnderway) {
+                console.log(`Deployment already underway for frontend app ${appUUID} with commit ${gitCommitSha}, waiting for completion`);
+            }
+            else {
+                //Update the commit SHA of the frontend app
+                await updateApplicationByUuid({
+                    client: this.client,
+                    path: {
+                        uuid: appUUID
+                    },
+                    body: {
+                        git_commit_sha: gitCommitSha
+                    }
+                });
+                console.log(`Deploying frontend app ${appUUID} with commit ${gitCommitSha}`);
+                await deployByTagOrUuid({
+                    client: this.client,
+                    query: {
+                        uuid: appUUID
+                    }
+                });
+            }
             await this.waitUntilAppIsReady({
                 appUUID: appUUID,
                 sha: gitCommitSha,
