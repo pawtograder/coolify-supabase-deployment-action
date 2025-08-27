@@ -50809,10 +50809,6 @@ class Coolify {
             const updatedDockerCompose = await readFile(require$$1$5.join(require$$1$5.dirname(new URL(import.meta.url).pathname), '../', 'supabase-pawtograder.yml'), 'utf-8');
             //Create backend service
             console.log(`Creating service ${supabaseComponentName}`);
-            console.log(`Project UUID: ${this.project_uuid}`);
-            console.log(`Server UUID: ${this.server_uuid}`);
-            console.log(`Environment UUID: ${this.environment_uuid}`);
-            console.log(`Environment name: ${this.environment_name}`);
             const backendService = await createService({
                 client: this.client,
                 body: {
@@ -50837,23 +50833,20 @@ class Coolify {
             }
             backendServiceUUID = backendService.data.uuid;
             console.log(`Updating service ${supabaseComponentName}`);
-            console.log(`Project UUID: ${this.project_uuid}`);
-            console.log(`Server UUID: ${this.server_uuid}`);
-            console.log(`Environment UUID: ${this.environment_uuid}`);
-            console.log(`Environment name: ${this.environment_name}`);
             const ret = await updateServiceByUuid({
                 client: this.client,
                 path: {
                     uuid: backendServiceUUID
                 },
+                // @ts-expect-error - They updated the coolify API but not the types :(
                 body: {
                     name: supabaseComponentName,
-                    project_uuid: this.project_uuid,
-                    server_uuid: this.server_uuid
-                        ? this.server_uuid
-                        : await this.getServerUUID(),
-                    environment_uuid: this.environment_uuid,
-                    environment_name: this.environment_name,
+                    // project_uuid: this.project_uuid,
+                    // server_uuid: this.server_uuid
+                    // ? this.server_uuid
+                    // : await this.getServerUUID(),
+                    // environment_uuid: this.environment_uuid,
+                    // environment_name: this.environment_name,
                     instant_deploy: false,
                     docker_compose_raw: Buffer.from(updatedDockerCompose).toString('base64')
                 }
