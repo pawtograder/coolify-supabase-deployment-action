@@ -441,6 +441,11 @@ export default class Coolify {
         'utf-8'
       )
       //Create backend service
+      console.log(`Creating service ${supabaseComponentName}`)
+      console.log(`Project UUID: ${this.project_uuid}`)
+      console.log(`Server UUID: ${this.server_uuid}`)
+      console.log(`Environment UUID: ${this.environment_uuid}`)
+      console.log(`Environment name: ${this.environment_name}`)
       const backendService = await createService({
         client: this.client,
         body: {
@@ -466,6 +471,11 @@ export default class Coolify {
       }
       backendServiceUUID = backendService.data.uuid
 
+      console.log(`Updating service ${supabaseComponentName}`)
+      console.log(`Project UUID: ${this.project_uuid}`)
+      console.log(`Server UUID: ${this.server_uuid}`)
+      console.log(`Environment UUID: ${this.environment_uuid}`)
+      console.log(`Environment name: ${this.environment_name}`)
       const ret = await updateServiceByUuid({
         client: this.client,
         path: {
