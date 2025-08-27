@@ -413,6 +413,8 @@ export default class Coolify {
     ephemeral: boolean
   }) {
     const existingServices = await listServices({ client: this.client })
+    console.log(`Existing services: ${JSON.stringify(existingServices.data)}`)
+    console.log(`Supabase component name: ${supabaseComponentName}`)
     const existingSupabaseService = existingServices.data?.find(
       (service) => service.name === supabaseComponentName
     )
