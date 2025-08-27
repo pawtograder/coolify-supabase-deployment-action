@@ -50792,7 +50792,7 @@ class Coolify {
     }
     async getSupabaseServiceUUIDOrCreateNewOne({ supabaseComponentName, ephemeral }) {
         const existingServices = await listServices({ client: this.client });
-        console.log(`Existing services: ${JSON.stringify(existingServices.data)}`);
+        console.log(`Existing services: ${JSON.stringify(existingServices.data?.map((service) => service.name))}`);
         console.log(`Supabase component name: ${supabaseComponentName}`);
         const existingSupabaseService = existingServices.data?.find((service) => service.name === supabaseComponentName);
         let backendServiceUUID;
@@ -50831,7 +50831,7 @@ class Coolify {
                 throw new Error('Backend service UUID not found');
             }
             backendServiceUUID = backendService.data.uuid;
-            await updateServiceByUuid({
+            const ret = await updateServiceByUuid({
                 client: this.client,
                 path: {
                     uuid: backendServiceUUID
@@ -50848,6 +50848,7 @@ class Coolify {
                     docker_compose_raw: Buffer.from(updatedDockerCompose).toString('base64')
                 }
             });
+            console.log(`Update service response: ${JSON.stringify(ret)}`);
             // Generate a random 64-character deployment key
             const deploymentKey = randomBytes(32).toString('hex');
             //Set the functions deployment key
