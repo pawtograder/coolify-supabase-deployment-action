@@ -260,6 +260,7 @@ export default class Coolify {
         )
         if (deployment) {
           if (deployment.status === 'finished') {
+            console.log(`Deployment ${sha} for app ${appUUID} is finished`)
             clearInterval(interval)
             clearTimeout(expirationTimeout)
             resolve(true)

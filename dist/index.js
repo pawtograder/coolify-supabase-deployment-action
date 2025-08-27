@@ -50695,6 +50695,7 @@ class Coolify {
                 const deployment = deployments.data?.deployments.find((deployment) => deployment.commit === sha || deployment.commit === 'HEAD');
                 if (deployment) {
                     if (deployment.status === 'finished') {
+                        console.log(`Deployment ${sha} for app ${appUUID} is finished`);
                         clearInterval(interval);
                         clearTimeout(expirationTimeout);
                         resolve(true);
