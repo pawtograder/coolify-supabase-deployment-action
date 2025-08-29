@@ -852,29 +852,29 @@ export default class Coolify {
 
       if (deploymentUnderway) {
         console.log(
-          `Deployment already underway for frontend app ${appUUID} with commit ${gitCommitSha}, waiting for completion`
+          `Deployment already underway for frontend app ${appUUID} with commit ${gitCommitSha}, we will force a new deploy anyway for debugging...`
         )
-      } else {
-        //Update the commit SHA of the frontend app
-        await updateApplicationByUuid({
-          client: this.client,
-          path: {
-            uuid: appUUID
-          },
-          body: {
-            git_commit_sha: gitCommitSha
-          }
-        })
-        console.log(
-          `Deploying frontend app ${appUUID} with commit ${gitCommitSha}`
-        )
-        await deployByTagOrUuid({
-          client: this.client,
-          query: {
-            uuid: appUUID
-          }
-        })
-      }
+      } //else {
+      //Update the commit SHA of the frontend app
+      await updateApplicationByUuid({
+        client: this.client,
+        path: {
+          uuid: appUUID
+        },
+        body: {
+          git_commit_sha: gitCommitSha
+        }
+      })
+      console.log(
+        `Deploying frontend app ${appUUID} with commit ${gitCommitSha}`
+      )
+      await deployByTagOrUuid({
+        client: this.client,
+        query: {
+          uuid: appUUID
+        }
+      })
+      // }
 
       await this.waitUntilAppIsReady({
         appUUID: appUUID,
