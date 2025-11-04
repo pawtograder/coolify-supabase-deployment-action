@@ -352,7 +352,12 @@ export default class Coolify {
             )
           }
         } else {
-          console.log('No status found for SHA: ' + sha)
+          console.log(
+            'No status found for SHA: ' +
+              sha +
+              ', deployment_uuid: ' +
+              deployment_uuid
+          )
           console.log(
             JSON.stringify(
               deployments.data.deployments.map((d) => ({
@@ -915,17 +920,18 @@ export default class Coolify {
       ])
 
       //Deploy the frontend
-      await startApplicationByUuid({
+      const { data: startData } = await startApplicationByUuid({
         client,
         path: {
           uuid: appUUID
         }
       })
+      const deployment_uuid = startData?.deployment_uuid
       //Wait for frontend to start
       console.log('Waiting for frontend to start')
       await this.waitUntilAppIsReady({
         appUUID: appUUID,
-        sha: gitCommitSha,
+        deployment_uuid: deployment_uuid,
         timeout_seconds: 20 * 60 //20 minutes, woof
       })
       console.log('Frontend started')
