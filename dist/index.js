@@ -50722,7 +50722,10 @@ class Coolify {
             return false;
         }
     }
-    async waitUntilAppIsReady({ appUUID, sha, timeout_seconds }) {
+    async waitUntilAppIsReady({ appUUID, sha, deployment_uuid, timeout_seconds }) {
+        if (!sha && !deployment_uuid) {
+            throw new Error('Either sha or deployment_uuid must be provided');
+        }
         const client = this.client;
         console.log(`Waiting for app ${appUUID} to be ready`);
         return new Promise((resolve, reject) => {
@@ -50742,13 +50745,19 @@ class Coolify {
                     console.error(deployments);
                     throw new Error(`Error getting deployments for app ${appUUID}: ${JSON.stringify(deployments)}`);
                 }
-                const deployment = deployments.data?.deployments.find((deployment) => deployment.commit === sha || deployment.commit === 'HEAD');
+                const deployment = deployments.data?.deployments.find((deployment) => (deployment_uuid &&
+                    deployment.deployment_uuid === deployment_uuid) ||
+                    (sha && deployment.commit === sha) ||
+                    deployment.commit === 'HEAD');
                 if (deployment) {
                     if (deployment.status === 'finished') {
                         console.log(`Deployment ${sha} for app ${appUUID} is finished`);
                         clearInterval(interval);
                         clearTimeout(expirationTimeout);
                         resolve(true);
+                    }
+                    if (deployment.status === 'failed') {
+                        throw new Error(`Deployment ${deployment_uuid} for app ${appUUID} failed`);
                     }
                 }
                 else {
@@ -51199,14 +51208,6 @@ class Coolify {
             console.log('Frontend started');
         }
         else {
-            // Check if deployment is already underway for this commit
-            const deploymentUnderway = await this.checkIfDeploymentUnderway({
-                appUUID: appUUID,
-                sha: gitCommitSha
-            });
-            if (deploymentUnderway) {
-                console.log(`Deployment already underway for frontend app ${appUUID} with commit ${gitCommitSha}, we will force a new deploy anyway for debugging...`);
-            } //else {
             //Update the commit SHA of the frontend app
             await updateApplicationByUuid({
                 client: this.client,
@@ -51218,16 +51219,25 @@ class Coolify {
                 }
             });
             console.log(`Deploying frontend app ${appUUID} with commit ${gitCommitSha}`);
-            await deployByTagOrUuid({
+            const { data: deploymentsData } = await deployByTagOrUuid({
                 client: this.client,
                 query: {
                     uuid: appUUID
                 }
             });
-            // }
+            if (!deploymentsData ||
+                !deploymentsData.deployments ||
+                deploymentsData.deployments.length === 0) {
+                throw new Error('Failed to deploy frontend app');
+            }
+            const { deployment_uuid } = deploymentsData.deployments[0];
+            if (!deployment_uuid) {
+                throw new Error('Failed to deploy frontend app');
+            }
+            console.log(`Waiting for deployment ${deployment_uuid} to finish`);
             await this.waitUntilAppIsReady({
                 appUUID: appUUID,
-                sha: gitCommitSha,
+                deployment_uuid: deployment_uuid,
                 timeout_seconds: 20 * 60 //20 minutes, woof
             });
         }
