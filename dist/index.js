@@ -45182,10 +45182,10 @@ const listApplications = (options) => {
     });
 };
 /**
- * Create (Private - GH App)
- * Create new application based on a private repository through a Github App.
+ * Create (Public)
+ * Create new application based on a public git repository.
  */
-const createPrivateGithubAppApplication = (options) => {
+const createPublicApplication = (options) => {
     return (options.client ?? client).post({
         security: [
             {
@@ -45193,7 +45193,7 @@ const createPrivateGithubAppApplication = (options) => {
                 type: 'http'
             }
         ],
-        url: '/applications/private-github-app',
+        url: '/applications/public',
         ...options,
         headers: {
             'Content-Type': 'application/json',
@@ -50557,10 +50557,9 @@ class Coolify {
     environment_name;
     server_uuid;
     base_deployment_url;
-    deployment_app_uuid;
     supabase_api_url;
     bugsink_dsn;
-    constructor({ baseUrl, token, project_uuid, environment_uuid, environment_name, server_uuid, supabase_api_url, base_deployment_url, deployment_app_uuid, bugsink_dsn }) {
+    constructor({ baseUrl, token, project_uuid, environment_uuid, environment_name, server_uuid, supabase_api_url, base_deployment_url, bugsink_dsn }) {
         this.client = createClient({
             baseUrl,
             auth: async () => {
@@ -50573,7 +50572,6 @@ class Coolify {
         this.server_uuid = server_uuid;
         this.supabase_api_url = supabase_api_url;
         this.base_deployment_url = base_deployment_url;
-        this.deployment_app_uuid = deployment_app_uuid;
         this.bugsink_dsn = bugsink_dsn;
     }
     async deployFunctions({ token, serviceUuid, folderPath }) {
@@ -51065,7 +51063,7 @@ class Coolify {
         let appUUID = existingFrontendApp?.uuid;
         if (!existingFrontendApp || !appUUID) {
             //Create frontend service, deploy it
-            const frontendApp = await createPrivateGithubAppApplication({
+            const frontendApp = await createPublicApplication({
                 client: this.client,
                 body: {
                     name: frontendAppName,
@@ -51079,9 +51077,9 @@ class Coolify {
                     server_uuid: this.server_uuid
                         ? this.server_uuid
                         : await this.getServerUUID(),
-                    github_app_uuid: this.deployment_app_uuid,
                     git_repository: repository,
-                    git_branch: gitBranch,
+                    //Branch tracking does not work for PRs.
+                    git_branch: gitBranch?.endsWith('/merge') ? 'staging' : gitBranch,
                     git_commit_sha: gitCommitSha,
                     ports_exposes: '3000',
                     domains: `https://${deploymentName}.${this.base_deployment_url}`
@@ -51244,7 +51242,6 @@ async function run() {
     const coolify_supabase_api_url = coreExports.getInput('coolify_supabase_api_url');
     const ephemeral = coreExports.getInput('ephemeral');
     const base_deployment_url = coreExports.getInput('base_deployment_url');
-    const deployment_app_uuid = coreExports.getInput('deployment_app_uuid');
     const cleanup_service_uuid = coreExports.getInput('cleanup_service_uuid');
     const cleanup_app_uuid = coreExports.getInput('cleanup_app_uuid');
     const reset_supabase_db = coreExports.getInput('reset_supabase_db');
@@ -51258,7 +51255,6 @@ async function run() {
         server_uuid: coolify_server_uuid,
         supabase_api_url: coolify_supabase_api_url,
         base_deployment_url,
-        deployment_app_uuid,
         bugsink_dsn
     });
     const branchOrPR = process.env.GITHUB_REF_NAME;

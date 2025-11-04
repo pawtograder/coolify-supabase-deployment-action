@@ -10,7 +10,7 @@ import { Client } from './client/client/types.js'
 import {
   createEnvByApplicationUuid,
   createEnvByServiceUuid,
-  createPrivateGithubAppApplication,
+  createPublicApplication,
   createService,
   deleteApplicationByUuid,
   deleteServiceByUuid,
@@ -37,7 +37,6 @@ export default class Coolify {
   private readonly environment_name: string
   private readonly server_uuid?: string
   private readonly base_deployment_url: string
-  private readonly deployment_app_uuid: string
   private readonly supabase_api_url: string
   private readonly bugsink_dsn: string
 
@@ -50,7 +49,6 @@ export default class Coolify {
     server_uuid,
     supabase_api_url,
     base_deployment_url,
-    deployment_app_uuid,
     bugsink_dsn
   }: {
     baseUrl: string
@@ -61,7 +59,6 @@ export default class Coolify {
     supabase_api_url: string
     server_uuid?: string
     base_deployment_url: string
-    deployment_app_uuid: string
     bugsink_dsn: string
   }) {
     this.client = createClient({
@@ -76,7 +73,6 @@ export default class Coolify {
     this.server_uuid = server_uuid
     this.supabase_api_url = supabase_api_url
     this.base_deployment_url = base_deployment_url
-    this.deployment_app_uuid = deployment_app_uuid
     this.bugsink_dsn = bugsink_dsn
   }
   async deployFunctions({
@@ -755,7 +751,7 @@ export default class Coolify {
     let appUUID = existingFrontendApp?.uuid
     if (!existingFrontendApp || !appUUID) {
       //Create frontend service, deploy it
-      const frontendApp = await createPrivateGithubAppApplication({
+      const frontendApp = await createPublicApplication({
         client: this.client,
         body: {
           name: frontendAppName,
@@ -769,9 +765,9 @@ export default class Coolify {
           server_uuid: this.server_uuid
             ? this.server_uuid
             : await this.getServerUUID(),
-          github_app_uuid: this.deployment_app_uuid,
           git_repository: repository,
-          git_branch: gitBranch,
+          //Branch tracking does not work for PRs.
+          git_branch: gitBranch?.endsWith('/merge') ? 'staging' : gitBranch,
           git_commit_sha: gitCommitSha,
           ports_exposes: '3000',
           domains: `https://${deploymentName}.${this.base_deployment_url}`

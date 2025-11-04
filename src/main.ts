@@ -12,7 +12,6 @@ export async function run() {
   const coolify_supabase_api_url = getInput('coolify_supabase_api_url')
   const ephemeral = getInput('ephemeral')
   const base_deployment_url = getInput('base_deployment_url')
-  const deployment_app_uuid = getInput('deployment_app_uuid')
   const cleanup_service_uuid = getInput('cleanup_service_uuid')
   const cleanup_app_uuid = getInput('cleanup_app_uuid')
   const reset_supabase_db = getInput('reset_supabase_db')
@@ -27,7 +26,6 @@ export async function run() {
     server_uuid: coolify_server_uuid,
     supabase_api_url: coolify_supabase_api_url,
     base_deployment_url,
-    deployment_app_uuid,
     bugsink_dsn
   })
   const branchOrPR = process.env.GITHUB_REF_NAME
