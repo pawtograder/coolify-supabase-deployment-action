@@ -50954,16 +50954,16 @@ class Coolify {
         const postgres_hostname = getServiceEnvOrThrow('POSTGRES_HOSTNAME');
         const postgres_port = getServiceEnvOrThrow('POSTGRES_PORT');
         const postgres_password = getServiceEnvOrThrow('SERVICE_PASSWORD_POSTGRES');
-        const supabase_url = getServiceEnvOrThrow('SERVICE_FQDN_SUPABASEKONG').replace(':8000', '');
+        const supabase_url = getServiceEnvOrThrow('SERVICE_URL_SUPABASEKONG').replace(':8000', '');
         const supabase_anon_key = getServiceEnvOrThrow('SERVICE_SUPABASEANON_KEY');
         const supabase_service_role_key = getServiceEnvOrThrow('SERVICE_SUPABASESERVICE_KEY');
         const deploymentKey = getServiceEnvOrThrow('SERVICE_SUPABASE_FUNCTIONS_DEPLOYMENT_KEY');
         const edgeFunctionSecret = getServiceEnvOrThrow('EDGE_FUNCTION_SECRET');
-        console.log(`SERVICE_SUPABASE_URL: ${supabase_url}`);
+        console.log(`SERVICE_URL_SUPABASEKONG: ${supabase_url}`);
         await this.createOrUpdateEnv({
             serviceUUID: backendServiceUUID,
             env: {
-                key: 'SERVICE_SUPABASE_URL',
+                key: 'SERVICE_URL_SUPABASEKONG',
                 value: supabase_url
             }
         });
