@@ -51328,7 +51328,7 @@ async function run() {
             ephemeral: ephemeral === 'true',
             checkedOutProjectDir: './',
             deploymentName,
-            repository: repositoryName,
+            repository: `https://github.com/${repositoryName}`,
             gitBranch: branchOrPR,
             gitCommitSha: process.env.GITHUB_SHA,
             reset_supabase_db: reset_supabase_db === 'true'
