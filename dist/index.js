@@ -50550,6 +50550,57 @@ class TCPTunnelClient {
     }
 }
 
+/**
+ * Checks if an error is a connection timeout error that should be retried
+ */
+function isConnectionTimeoutError(error) {
+    if (error instanceof Error) {
+        const message = error.message.toLowerCase();
+        const errorWithCode = error;
+        // Check for connection timeout/refused errors
+        return (errorWithCode.code === 'ECONNREFUSED' ||
+            errorWithCode.code === 'ETIMEDOUT' ||
+            errorWithCode.code === 'ENOTFOUND' ||
+            errorWithCode.code === 'ECONNRESET' ||
+            message.includes('connect timeout') ||
+            message.includes('connection timeout') ||
+            message.includes('fetch failed') ||
+            message.includes('networkerror') ||
+            message.includes('network error'));
+    }
+    return false;
+}
+/**
+ * Creates a fetch wrapper with exponential backoff retry logic for connection timeout errors
+ */
+function createRetryFetch(baseFetch, maxRetries = 5, initialDelayMs = 1000) {
+    return async (input, init) => {
+        let lastError;
+        let delay = initialDelayMs;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                return await baseFetch(input, init);
+            }
+            catch (error) {
+                lastError = error;
+                // Only retry on connection timeout errors
+                if (!isConnectionTimeoutError(error)) {
+                    throw error;
+                }
+                // Don't retry on the last attempt
+                if (attempt === maxRetries) {
+                    break;
+                }
+                console.log(`Connection timeout error (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`);
+                // Wait with exponential backoff
+                await new Promise((resolve) => setTimeout(resolve, delay));
+                delay = Math.min(delay * 2, 30000); // Cap at 30 seconds
+            }
+        }
+        // If we've exhausted all retries, throw the last error
+        throw lastError;
+    };
+}
 class Coolify {
     client;
     project_uuid;
@@ -50564,7 +50615,8 @@ class Coolify {
             baseUrl,
             auth: async () => {
                 return token;
-            }
+            },
+            fetch: createRetryFetch(globalThis.fetch)
         });
         this.project_uuid = project_uuid;
         this.environment_uuid = environment_uuid;
