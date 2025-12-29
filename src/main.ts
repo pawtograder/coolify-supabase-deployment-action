@@ -1,6 +1,47 @@
 import { getInput, setOutput } from '@actions/core'
 import Coolify from './coolify.js'
 import { randomUUID } from 'crypto'
+import { readFileSync } from 'fs'
+
+interface GitHubEvent {
+  pull_request?: {
+    head: {
+      ref: string
+      sha: string
+    }
+  }
+}
+
+function getGitRefAndSha(): { branchOrPR: string; gitSha: string } {
+  const eventPath = process.env.GITHUB_EVENT_PATH
+  const eventName = process.env.GITHUB_EVENT_NAME
+
+  // For pull_request_target, we need to get the PR head ref/sha from the event payload
+  if (
+    eventPath &&
+    (eventName === 'pull_request_target' || eventName === 'pull_request')
+  ) {
+    try {
+      const eventData: GitHubEvent = JSON.parse(readFileSync(eventPath, 'utf8'))
+      if (eventData.pull_request) {
+        return {
+          branchOrPR: eventData.pull_request.head.ref,
+          gitSha: eventData.pull_request.head.sha
+        }
+      }
+    } catch {
+      // Fall through to default behavior
+    }
+  }
+
+  // Default: use environment variables (works for push events, etc.)
+  const branchOrPR = process.env.GITHUB_REF_NAME
+  const gitSha = process.env.GITHUB_SHA
+  if (!branchOrPR || !gitSha) {
+    throw new Error('Unable to determine git ref and SHA')
+  }
+  return { branchOrPR, gitSha }
+}
 
 export async function run() {
   const coolify_api_url = getInput('coolify_api_url')
@@ -28,11 +69,13 @@ export async function run() {
     base_deployment_url,
     bugsink_dsn
   })
-  const branchOrPR = process.env.GITHUB_REF_NAME
+
   const repositoryName = process.env.GITHUB_REPOSITORY
-  if (!branchOrPR || !repositoryName || !process.env.GITHUB_SHA) {
-    throw new Error('GITHUB_REF_NAME and GITHUB_REPOSITORY must be set')
+  if (!repositoryName) {
+    throw new Error('GITHUB_REPOSITORY must be set')
   }
+
+  const { branchOrPR, gitSha } = getGitRefAndSha()
 
   const deploymentName =
     ephemeral.toLowerCase() === 'true'
@@ -58,7 +101,7 @@ export async function run() {
       deploymentName,
       repository: `https://github.com/${repositoryName}`,
       gitBranch: branchOrPR,
-      gitCommitSha: process.env.GITHUB_SHA,
+      gitCommitSha: gitSha,
       reset_supabase_db: reset_supabase_db === 'true'
     })
     setOutput('supabase_url', supabase_url)

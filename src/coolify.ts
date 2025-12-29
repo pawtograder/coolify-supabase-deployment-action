@@ -431,6 +431,9 @@ export default class Coolify {
       if (!env.value && !env.optional) {
         throw new Error(`Env ${env.key} has no value`)
       }
+      if (!env.value && env.optional) {
+        continue
+      }
       await this.createOrUpdateEnv({
         serviceUUID,
         env
