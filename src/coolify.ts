@@ -354,9 +354,9 @@ export default class Coolify {
         } else {
           console.log(
             'No status found for SHA: ' +
-            sha +
-            ', deployment_uuid: ' +
-            deployment_uuid
+              sha +
+              ', deployment_uuid: ' +
+              deployment_uuid
           )
           console.log(
             JSON.stringify(
