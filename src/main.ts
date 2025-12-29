@@ -83,6 +83,7 @@ interface DeploymentInfo {
   studio_password: string
   serviceUUID: string
   appUUID: string
+  isNewDeployment: boolean
 }
 
 async function postPRComment({
@@ -405,14 +406,18 @@ export async function run() {
     setOutput('service_uuid', deployment.serviceUUID)
     setOutput('app_uuid', deployment.appUUID)
 
-    // Send Discord webhook notification if configured
-    if (discord_webhook_url) {
+    // Send Discord webhook notification only for NEW deployments
+    if (discord_webhook_url && deployment.isNewDeployment) {
       await sendDiscordWebhook({
         webhookUrl: discord_webhook_url,
         gitInfo: { branchOrPR, gitSha, repository, prNumber, prUrl, prTitle },
         deployment,
         repository
       })
+    } else if (discord_webhook_url && !deployment.isNewDeployment) {
+      console.log(
+        'Skipping Discord webhook - this is a redeploy of existing service'
+      )
     }
 
     // Post PR comment if this is a PR and we have a GitHub token

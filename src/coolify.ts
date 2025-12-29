@@ -354,9 +354,9 @@ export default class Coolify {
         } else {
           console.log(
             'No status found for SHA: ' +
-              sha +
-              ', deployment_uuid: ' +
-              deployment_uuid
+            sha +
+            ', deployment_uuid: ' +
+            deployment_uuid
           )
           console.log(
             JSON.stringify(
@@ -906,7 +906,8 @@ export default class Coolify {
       (app) => app.name === frontendAppName
     )
     let appUUID = existingFrontendApp?.uuid
-    if (!existingFrontendApp || !appUUID) {
+    const isNewDeployment = !existingFrontendApp || !appUUID
+    if (isNewDeployment) {
       //Create frontend service, deploy it
       const frontendApp = await createPublicApplication({
         client: this.client,
@@ -997,6 +998,10 @@ export default class Coolify {
       })
       console.log('Frontend started')
     } else {
+      // appUUID is guaranteed to be defined here since isNewDeployment is false
+      if (!appUUID) {
+        throw new Error('Frontend app UUID not found for existing deployment')
+      }
       //Update the commit SHA of the frontend app
       await updateApplicationByUuid({
         client: this.client,
@@ -1048,7 +1053,8 @@ export default class Coolify {
       postgres_port,
       postgres_password,
       studio_user,
-      studio_password
+      studio_password,
+      isNewDeployment
     }
   }
 

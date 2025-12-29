@@ -51175,7 +51175,8 @@ class Coolify {
         }
         const existingFrontendApp = existingApplications.data?.find((app) => app.name === frontendAppName);
         let appUUID = existingFrontendApp?.uuid;
-        if (!existingFrontendApp || !appUUID) {
+        const isNewDeployment = !existingFrontendApp || !appUUID;
+        if (isNewDeployment) {
             //Create frontend service, deploy it
             const frontendApp = await createPublicApplication({
                 client: this.client,
@@ -51261,6 +51262,10 @@ class Coolify {
             console.log('Frontend started');
         }
         else {
+            // appUUID is guaranteed to be defined here since isNewDeployment is false
+            if (!appUUID) {
+                throw new Error('Frontend app UUID not found for existing deployment');
+            }
             //Update the commit SHA of the frontend app
             await updateApplicationByUuid({
                 client: this.client,
@@ -51306,7 +51311,8 @@ class Coolify {
             postgres_port,
             postgres_password,
             studio_user,
-            studio_password
+            studio_password,
+            isNewDeployment
         };
     }
     async pushMigrations({ serviceUUID, deployToken, checkedOutProjectDir, postgresPassword, resetDb, supabase_url, edgeFunctionSecret }) {
@@ -51621,14 +51627,17 @@ async function run() {
         coreExports.setOutput('app_url', deployment.appURL);
         coreExports.setOutput('service_uuid', deployment.serviceUUID);
         coreExports.setOutput('app_uuid', deployment.appUUID);
-        // Send Discord webhook notification if configured
-        if (discord_webhook_url) {
+        // Send Discord webhook notification only for NEW deployments
+        if (discord_webhook_url && deployment.isNewDeployment) {
             await sendDiscordWebhook({
                 webhookUrl: discord_webhook_url,
                 gitInfo: { branchOrPR, gitSha, prNumber, prUrl, prTitle },
                 deployment,
                 repository
             });
+        }
+        else if (discord_webhook_url && !deployment.isNewDeployment) {
+            console.log('Skipping Discord webhook - this is a redeploy of existing service');
         }
         // Post PR comment if this is a PR and we have a GitHub token
         const baseRepository = process.env.GITHUB_REPOSITORY;
