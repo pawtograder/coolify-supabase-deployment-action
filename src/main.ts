@@ -8,15 +8,25 @@ interface GitHubEvent {
     head: {
       ref: string
       sha: string
+      repo: {
+        full_name: string
+      }
     }
   }
 }
 
-function getGitRefAndSha(): { branchOrPR: string; gitSha: string } {
+interface GitInfo {
+  branchOrPR: string
+  gitSha: string
+  repository: string
+}
+
+function getGitInfo(): GitInfo {
   const eventPath = process.env.GITHUB_EVENT_PATH
   const eventName = process.env.GITHUB_EVENT_NAME
+  const defaultRepository = process.env.GITHUB_REPOSITORY
 
-  // For pull_request_target, we need to get the PR head ref/sha from the event payload
+  // For pull_request_target, we need to get the PR head ref/sha/repo from the event payload
   if (
     eventPath &&
     (eventName === 'pull_request_target' || eventName === 'pull_request')
@@ -26,7 +36,9 @@ function getGitRefAndSha(): { branchOrPR: string; gitSha: string } {
       if (eventData.pull_request) {
         return {
           branchOrPR: eventData.pull_request.head.ref,
-          gitSha: eventData.pull_request.head.sha
+          gitSha: eventData.pull_request.head.sha,
+          // Use the PR head repo (important for fork PRs)
+          repository: eventData.pull_request.head.repo.full_name
         }
       }
     } catch {
@@ -37,10 +49,10 @@ function getGitRefAndSha(): { branchOrPR: string; gitSha: string } {
   // Default: use environment variables (works for push events, etc.)
   const branchOrPR = process.env.GITHUB_REF_NAME
   const gitSha = process.env.GITHUB_SHA
-  if (!branchOrPR || !gitSha) {
-    throw new Error('Unable to determine git ref and SHA')
+  if (!branchOrPR || !gitSha || !defaultRepository) {
+    throw new Error('Unable to determine git ref, SHA, and repository')
   }
-  return { branchOrPR, gitSha }
+  return { branchOrPR, gitSha, repository: defaultRepository }
 }
 
 export async function run() {
@@ -70,12 +82,7 @@ export async function run() {
     bugsink_dsn
   })
 
-  const repositoryName = process.env.GITHUB_REPOSITORY
-  if (!repositoryName) {
-    throw new Error('GITHUB_REPOSITORY must be set')
-  }
-
-  const { branchOrPR, gitSha } = getGitRefAndSha()
+  const { branchOrPR, gitSha, repository } = getGitInfo()
 
   const deploymentName =
     ephemeral.toLowerCase() === 'true'
@@ -99,7 +106,7 @@ export async function run() {
       ephemeral: ephemeral === 'true',
       checkedOutProjectDir: './',
       deploymentName,
-      repository: `https://github.com/${repositoryName}`,
+      repository: `https://github.com/${repository}`,
       gitBranch: branchOrPR,
       gitCommitSha: gitSha,
       reset_supabase_db: reset_supabase_db === 'true'

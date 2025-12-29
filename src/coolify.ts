@@ -864,8 +864,7 @@ export default class Coolify {
             ? this.server_uuid
             : await this.getServerUUID(),
           git_repository: repository,
-          //Branch tracking does not work for PRs.
-          git_branch: gitBranch?.endsWith('/merge') ? 'staging' : gitBranch,
+          git_branch: gitBranch,
           git_commit_sha: gitCommitSha,
           ports_exposes: '3000',
           domains: `https://${deploymentName}.${this.base_deployment_url}`

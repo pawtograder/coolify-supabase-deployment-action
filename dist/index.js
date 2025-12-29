@@ -51145,8 +51145,7 @@ class Coolify {
                         ? this.server_uuid
                         : await this.getServerUUID(),
                     git_repository: repository,
-                    //Branch tracking does not work for PRs.
-                    git_branch: gitBranch?.endsWith('/merge') ? 'staging' : gitBranch,
+                    git_branch: gitBranch,
                     git_commit_sha: gitCommitSha,
                     ports_exposes: '3000',
                     domains: `https://${deploymentName}.${this.base_deployment_url}`
@@ -51301,10 +51300,11 @@ function extractHostFromDsn(bugsink_dsn) {
     return url.protocol + '//' + url.hostname;
 }
 
-function getGitRefAndSha() {
+function getGitInfo() {
     const eventPath = process.env.GITHUB_EVENT_PATH;
     const eventName = process.env.GITHUB_EVENT_NAME;
-    // For pull_request_target, we need to get the PR head ref/sha from the event payload
+    const defaultRepository = process.env.GITHUB_REPOSITORY;
+    // For pull_request_target, we need to get the PR head ref/sha/repo from the event payload
     if (eventPath &&
         (eventName === 'pull_request_target' || eventName === 'pull_request')) {
         try {
@@ -51312,7 +51312,9 @@ function getGitRefAndSha() {
             if (eventData.pull_request) {
                 return {
                     branchOrPR: eventData.pull_request.head.ref,
-                    gitSha: eventData.pull_request.head.sha
+                    gitSha: eventData.pull_request.head.sha,
+                    // Use the PR head repo (important for fork PRs)
+                    repository: eventData.pull_request.head.repo.full_name
                 };
             }
         }
@@ -51323,10 +51325,10 @@ function getGitRefAndSha() {
     // Default: use environment variables (works for push events, etc.)
     const branchOrPR = process.env.GITHUB_REF_NAME;
     const gitSha = process.env.GITHUB_SHA;
-    if (!branchOrPR || !gitSha) {
-        throw new Error('Unable to determine git ref and SHA');
+    if (!branchOrPR || !gitSha || !defaultRepository) {
+        throw new Error('Unable to determine git ref, SHA, and repository');
     }
-    return { branchOrPR, gitSha };
+    return { branchOrPR, gitSha, repository: defaultRepository };
 }
 async function run() {
     const coolify_api_url = coreExports.getInput('coolify_api_url');
@@ -51353,11 +51355,7 @@ async function run() {
         base_deployment_url,
         bugsink_dsn
     });
-    const repositoryName = process.env.GITHUB_REPOSITORY;
-    if (!repositoryName) {
-        throw new Error('GITHUB_REPOSITORY must be set');
-    }
-    const { branchOrPR, gitSha } = getGitRefAndSha();
+    const { branchOrPR, gitSha, repository } = getGitInfo();
     const deploymentName = ephemeral.toLowerCase() === 'true'
         ? `${branchOrPR.replace('/', '-')}-${randomUUID()}`
         : branchOrPR.replace('/', '-');
@@ -51372,7 +51370,7 @@ async function run() {
             ephemeral: ephemeral === 'true',
             checkedOutProjectDir: './',
             deploymentName,
-            repository: `https://github.com/${repositoryName}`,
+            repository: `https://github.com/${repository}`,
             gitBranch: branchOrPR,
             gitCommitSha: gitSha,
             reset_supabase_db: reset_supabase_db === 'true'
