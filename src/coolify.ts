@@ -772,6 +772,59 @@ export default class Coolify {
       console.log(`Frontend app ${cleanup_app_uuid} not found`)
     }
   }
+
+  async cleanupByName({ deploymentName }: { deploymentName: string }) {
+    const frontendAppName = `${deploymentName}-frontend`
+    const supabaseServiceName = `${deploymentName}-supabase`
+
+    console.log(
+      `Looking for deployments to cleanup: ${frontendAppName}, ${supabaseServiceName}`
+    )
+
+    // Find and delete supabase service
+    const existingServices = await listServices({ client: this.client })
+    const supabaseService = existingServices.data?.find(
+      (service) => service.name === supabaseServiceName
+    )
+    if (supabaseService && supabaseService.uuid) {
+      console.log(`Deleting supabase service: ${supabaseService.uuid}`)
+      await deleteServiceByUuid({
+        client: this.client,
+        path: {
+          uuid: supabaseService.uuid
+        }
+      })
+      console.log(`Deleted supabase service: ${supabaseServiceName}`)
+    } else {
+      console.log(`Supabase service ${supabaseServiceName} not found`)
+    }
+
+    // Find and delete frontend app
+    const existingApplications = await listApplications({
+      client: this.client
+    })
+    const frontendApp = existingApplications.data?.find(
+      (app) => app.name === frontendAppName
+    )
+    if (frontendApp && frontendApp.uuid) {
+      console.log(`Deleting frontend app: ${frontendApp.uuid}`)
+      await deleteApplicationByUuid({
+        client: this.client,
+        path: {
+          uuid: frontendApp.uuid
+        }
+      })
+      console.log(`Deleted frontend app: ${frontendAppName}`)
+    } else {
+      console.log(`Frontend app ${frontendAppName} not found`)
+    }
+
+    return {
+      deletedService: supabaseService?.uuid,
+      deletedApp: frontendApp?.uuid
+    }
+  }
+
   async createDeployment({
     ephemeral,
     checkedOutProjectDir,

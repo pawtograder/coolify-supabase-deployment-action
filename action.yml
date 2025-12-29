@@ -88,6 +88,14 @@ inputs:
     required: false
     default: ''
     type: string
+  github_token:
+    description:
+      GitHub token for posting deployment status comments on PRs. If provided
+      and this is a PR, a comment with the deployment URL and status will be
+      posted to the PR.
+    required: false
+    default: ''
+    type: string
 
 # Define your outputs here.
 outputs:
@@ -103,6 +111,14 @@ outputs:
     description: The UUID of the newly deployed service.
   app_uuid:
     description: The UUID of the newly deployed web application.
+  cleanup_performed:
+    description:
+      Whether a cleanup was performed (set to 'true' when PR is closed and
+      resources are deleted).
+  deleted_service_uuid:
+    description: The UUID of the deleted service (when cleanup was performed).
+  deleted_app_uuid:
+    description: The UUID of the deleted app (when cleanup was performed).
 
 runs:
   using: node20
