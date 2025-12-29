@@ -699,6 +699,8 @@ export default class Coolify {
       'SERVICE_SUPABASE_FUNCTIONS_DEPLOYMENT_KEY'
     )
     const edgeFunctionSecret = getServiceEnvOrThrow('EDGE_FUNCTION_SECRET')
+    const studio_user = getServiceEnvOrThrow('SERVICE_USER_ADMIN')
+    const studio_password = getServiceEnvOrThrow('SERVICE_PASSWORD_ADMIN')
     console.log(`SERVICE_URL_SUPABASEKONG: ${supabase_url}`)
     await this.createOrUpdateEnv({
       serviceUUID: backendServiceUUID,
@@ -727,7 +729,9 @@ export default class Coolify {
       supabase_service_role_key,
       deploymentKey,
       isNewSupabaseService,
-      edgeFunctionSecret
+      edgeFunctionSecret,
+      studio_user,
+      studio_password
     }
   }
   async cleanup({
@@ -797,7 +801,9 @@ export default class Coolify {
       supabase_service_role_key,
       deploymentKey,
       isNewSupabaseService,
-      edgeFunctionSecret
+      edgeFunctionSecret,
+      studio_user,
+      studio_password
     } = await this.getSupabaseServiceUUIDOrCreateNewOne({
       supabaseComponentName,
       ephemeral
@@ -980,10 +986,16 @@ export default class Coolify {
     return {
       serviceUUID: backendServiceUUID,
       appUUID,
-      appURL: `https://${deploymentName}.dev.pawtograder.net`,
+      appURL: `https://${deploymentName}.${this.base_deployment_url}`,
       supabase_url,
       supabase_service_role_key,
-      supabase_anon_key
+      supabase_anon_key,
+      postgres_db,
+      postgres_hostname,
+      postgres_port,
+      postgres_password,
+      studio_user,
+      studio_password
     }
   }
 

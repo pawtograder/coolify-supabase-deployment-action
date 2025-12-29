@@ -80,6 +80,14 @@ inputs:
     required: false
     default: ''
     type: string
+  discord_webhook_url:
+    description:
+      The Discord webhook URL to send deployment notifications to. If provided,
+      a message with deployment details and secrets will be posted to the
+      channel.
+    required: false
+    default: ''
+    type: string
 
 # Define your outputs here.
 outputs:

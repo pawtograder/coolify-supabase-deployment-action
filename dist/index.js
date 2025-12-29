@@ -51024,6 +51024,8 @@ class Coolify {
         const supabase_service_role_key = getServiceEnvOrThrow('SERVICE_SUPABASESERVICE_KEY');
         const deploymentKey = getServiceEnvOrThrow('SERVICE_SUPABASE_FUNCTIONS_DEPLOYMENT_KEY');
         const edgeFunctionSecret = getServiceEnvOrThrow('EDGE_FUNCTION_SECRET');
+        const studio_user = getServiceEnvOrThrow('SERVICE_USER_ADMIN');
+        const studio_password = getServiceEnvOrThrow('SERVICE_PASSWORD_ADMIN');
         console.log(`SERVICE_URL_SUPABASEKONG: ${supabase_url}`);
         await this.createOrUpdateEnv({
             serviceUUID: backendServiceUUID,
@@ -51051,7 +51053,9 @@ class Coolify {
             supabase_service_role_key,
             deploymentKey,
             isNewSupabaseService,
-            edgeFunctionSecret
+            edgeFunctionSecret,
+            studio_user,
+            studio_password
         };
     }
     async cleanup({ cleanup_service_uuid, cleanup_app_uuid }) {
@@ -51086,7 +51090,7 @@ class Coolify {
     }
     async createDeployment({ ephemeral, checkedOutProjectDir, deploymentName, repository, gitBranch, gitCommitSha, reset_supabase_db }) {
         const supabaseComponentName = `${deploymentName}-supabase`;
-        const { backendServiceUUID, postgres_db, postgres_hostname, postgres_port, postgres_password, supabase_url, supabase_anon_key, supabase_service_role_key, deploymentKey, isNewSupabaseService, edgeFunctionSecret } = await this.getSupabaseServiceUUIDOrCreateNewOne({
+        const { backendServiceUUID, postgres_db, postgres_hostname, postgres_port, postgres_password, supabase_url, supabase_anon_key, supabase_service_role_key, deploymentKey, isNewSupabaseService, edgeFunctionSecret, studio_user, studio_password } = await this.getSupabaseServiceUUIDOrCreateNewOne({
             supabaseComponentName,
             ephemeral
         });
@@ -51250,10 +51254,16 @@ class Coolify {
         return {
             serviceUUID: backendServiceUUID,
             appUUID,
-            appURL: `https://${deploymentName}.dev.pawtograder.net`,
+            appURL: `https://${deploymentName}.${this.base_deployment_url}`,
             supabase_url,
             supabase_service_role_key,
-            supabase_anon_key
+            supabase_anon_key,
+            postgres_db,
+            postgres_hostname,
+            postgres_port,
+            postgres_password,
+            studio_user,
+            studio_password
         };
     }
     async pushMigrations({ serviceUUID, deployToken, checkedOutProjectDir, postgresPassword, resetDb, supabase_url, edgeFunctionSecret }) {
@@ -51314,7 +51324,10 @@ function getGitInfo() {
                     branchOrPR: eventData.pull_request.head.ref,
                     gitSha: eventData.pull_request.head.sha,
                     // Use the PR head repo (important for fork PRs)
-                    repository: eventData.pull_request.head.repo.full_name
+                    repository: eventData.pull_request.head.repo.full_name,
+                    prNumber: eventData.pull_request.number,
+                    prUrl: eventData.pull_request.html_url,
+                    prTitle: eventData.pull_request.title
                 };
             }
         }
@@ -51330,6 +51343,83 @@ function getGitInfo() {
     }
     return { branchOrPR, gitSha, repository: defaultRepository };
 }
+async function sendDiscordWebhook({ webhookUrl, gitInfo, deployment, repository }) {
+    const { branchOrPR, gitSha, prNumber, prUrl, prTitle } = gitInfo;
+    // Build GitHub link - either PR or branch
+    const githubLink = prUrl
+        ? `[PR #${prNumber}: ${prTitle}](${prUrl})`
+        : `[Branch: ${branchOrPR}](https://github.com/${repository}/tree/${branchOrPR})`;
+    const studioUrl = `https://${deployment.studio_user}:${deployment.studio_password}@${deployment.supabase_url.replace('https://', '')}`;
+    const embed = {
+        title: '🚀 New Deployment Ready!',
+        color: 0x00ff00, // Green
+        fields: [
+            {
+                name: '📍 Source',
+                value: githubLink,
+                inline: false
+            },
+            {
+                name: '🌐 App URL',
+                value: `[${deployment.appURL}](${deployment.appURL})`,
+                inline: false
+            },
+            {
+                name: '🔧 Supabase Studio',
+                value: `[Open Studio](${studioUrl})`,
+                inline: false
+            },
+            {
+                name: '📊 Environment Variables',
+                value: [
+                    '```',
+                    `POSTGRES_DB=${deployment.postgres_db}`,
+                    `POSTGRES_HOSTNAME=${deployment.postgres_hostname}`,
+                    `POSTGRES_PORT=${deployment.postgres_port}`,
+                    `POSTGRES_PASSWORD=${deployment.postgres_password}`,
+                    `SUPABASE_URL=${deployment.supabase_url}`,
+                    `SUPABASE_ANON_KEY=${deployment.supabase_anon_key}`,
+                    `SUPABASE_SERVICE_ROLE_KEY=${deployment.supabase_service_role_key}`,
+                    `NEXT_PUBLIC_SUPABASE_URL=${deployment.supabase_url}`,
+                    `NEXT_PUBLIC_SUPABASE_ANON_KEY=${deployment.supabase_anon_key}`,
+                    `STUDIO_USER=${deployment.studio_user}`,
+                    `STUDIO_PASSWORD=${deployment.studio_password}`,
+                    `STUDIO_URL=${deployment.supabase_url}`,
+                    `NEXT_PUBLIC_PAWTOGRADER_URL=${deployment.appURL}`,
+                    `NEXT_PUBLIC_PAWTOGRADER_WEB_URL=${deployment.appURL}`,
+                    '```'
+                ].join('\n'),
+                inline: false
+            },
+            {
+                name: '🔑 Commit SHA',
+                value: `\`${gitSha.substring(0, 7)}\``,
+                inline: true
+            },
+            {
+                name: '🏷️ Service UUID',
+                value: `\`${deployment.serviceUUID}\``,
+                inline: true
+            }
+        ],
+        timestamp: new Date().toISOString()
+    };
+    const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            embeds: [embed]
+        })
+    });
+    if (!response.ok) {
+        console.error(`Failed to send Discord webhook: ${response.status} ${response.statusText}`);
+    }
+    else {
+        console.log('Discord webhook sent successfully');
+    }
+}
 async function run() {
     const coolify_api_url = coreExports.getInput('coolify_api_url');
     const coolify_api_token = coreExports.getInput('coolify_api_token');
@@ -51344,6 +51434,7 @@ async function run() {
     const cleanup_app_uuid = coreExports.getInput('cleanup_app_uuid');
     const reset_supabase_db = coreExports.getInput('reset_supabase_db');
     const bugsink_dsn = coreExports.getInput('bugsink_dsn');
+    const discord_webhook_url = coreExports.getInput('discord_webhook_url');
     const coolify = new Coolify({
         baseUrl: coolify_api_url,
         token: coolify_api_token,
@@ -51355,7 +51446,7 @@ async function run() {
         base_deployment_url,
         bugsink_dsn
     });
-    const { branchOrPR, gitSha, repository } = getGitInfo();
+    const { branchOrPR, gitSha, repository, prNumber, prUrl, prTitle } = getGitInfo();
     const deploymentName = ephemeral.toLowerCase() === 'true'
         ? `${branchOrPR.replace('/', '-')}-${randomUUID()}`
         : branchOrPR.replace('/', '-');
@@ -51366,7 +51457,7 @@ async function run() {
         });
     }
     else {
-        const { serviceUUID, appUUID, appURL, supabase_url, supabase_service_role_key, supabase_anon_key } = await coolify.createDeployment({
+        const deployment = await coolify.createDeployment({
             ephemeral: ephemeral === 'true',
             checkedOutProjectDir: './',
             deploymentName,
@@ -51375,12 +51466,21 @@ async function run() {
             gitCommitSha: gitSha,
             reset_supabase_db: reset_supabase_db === 'true'
         });
-        coreExports.setOutput('supabase_url', supabase_url);
-        coreExports.setOutput('supabase_service_role_key', supabase_service_role_key);
-        coreExports.setOutput('supabase_anon_key', supabase_anon_key);
-        coreExports.setOutput('app_url', appURL);
-        coreExports.setOutput('service_uuid', serviceUUID);
-        coreExports.setOutput('app_uuid', appUUID);
+        coreExports.setOutput('supabase_url', deployment.supabase_url);
+        coreExports.setOutput('supabase_service_role_key', deployment.supabase_service_role_key);
+        coreExports.setOutput('supabase_anon_key', deployment.supabase_anon_key);
+        coreExports.setOutput('app_url', deployment.appURL);
+        coreExports.setOutput('service_uuid', deployment.serviceUUID);
+        coreExports.setOutput('app_uuid', deployment.appUUID);
+        // Send Discord webhook notification if configured
+        if (discord_webhook_url) {
+            await sendDiscordWebhook({
+                webhookUrl: discord_webhook_url,
+                gitInfo: { branchOrPR, gitSha, prNumber, prUrl, prTitle },
+                deployment,
+                repository
+            });
+        }
     }
 }
 
