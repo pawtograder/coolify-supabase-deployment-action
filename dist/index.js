@@ -51175,7 +51175,17 @@ class Coolify {
         }
         const existingFrontendApp = existingApplications.data?.find((app) => app.name === frontendAppName);
         let appUUID = existingFrontendApp?.uuid;
+        let appURL = `https://${deploymentName}.${this.base_deployment_url}`;
         const isNewDeployment = !existingFrontendApp || !appUUID;
+        // For existing deployments, retrieve the actual URL from Coolify
+        if (!isNewDeployment && existingFrontendApp?.fqdn) {
+            // fqdn may contain multiple domains separated by commas, take the first one
+            const domains = existingFrontendApp.fqdn.split(',').map((d) => d.trim());
+            if (domains.length > 0 && domains[0]) {
+                appURL = domains[0];
+                console.log(`Using existing app URL from Coolify: ${appURL}`);
+            }
+        }
         if (isNewDeployment) {
             //Create frontend service, deploy it
             const frontendApp = await createPublicApplication({
@@ -51302,7 +51312,7 @@ class Coolify {
         return {
             serviceUUID: backendServiceUUID,
             appUUID,
-            appURL: `https://${deploymentName}.${this.base_deployment_url}`,
+            appURL,
             supabase_url,
             supabase_service_role_key,
             supabase_anon_key,
