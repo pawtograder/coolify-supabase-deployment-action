@@ -50887,7 +50887,7 @@ class Coolify {
                         ? this.server_uuid
                         : await this.getServerUUID(),
                     environment_uuid: this.environment_uuid,
-                    type: 'supabase',
+                    // type: 'supabase',
                     environment_name: this.environment_name,
                     instant_deploy: false,
                     docker_compose_raw: Buffer.from(updatedDockerCompose).toString('base64')
