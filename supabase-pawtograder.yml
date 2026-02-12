@@ -840,6 +840,8 @@ services:
       - 'UPSTASH_REDIS_REST_TOKEN=${UPSTASH_REDIS_REST_TOKEN}'
       - 'SENTRY_DSN=${SENTRY_DSN}'
       - 'GIT_COMMIT_SHA=${SOURCE_COMMIT}'
+      - 'E2E_ENABLE=TRUE'
+      - 'END_TO_END_SECRET=not-a-secret'
     volumes:
       - './volumes/functions:/home/deno/functions'
       - type: bind
