@@ -50653,8 +50653,36 @@ class Coolify {
         await execExports.exec('docker', ['login', 'ghcr.io', '-u', registryUsername, '--password-stdin'], {
             input: Buffer.from(registryPassword)
         });
-        // Build with build-args for NEXT_PUBLIC_* vars
-        const buildCmd = ['build', '-f', dockerfilePath, '-t', fullImage];
+        // Ensure buildx builder exists for registry-based caching
+        const cacheImage = `${imageRepo}:cache`;
+        try {
+            await execExports.exec('docker', ['buildx', 'inspect', 'ci-builder'], {
+                silent: true
+            });
+        }
+        catch {
+            await execExports.exec('docker', [
+                'buildx',
+                'create',
+                '--name',
+                'ci-builder',
+                '--use'
+            ]);
+        }
+        // Build with buildx + registry layer cache
+        const buildCmd = [
+            'buildx',
+            'build',
+            '--builder',
+            'ci-builder',
+            '-f',
+            dockerfilePath,
+            '-t',
+            fullImage,
+            `--cache-from=type=registry,ref=${cacheImage}`,
+            `--cache-to=type=registry,ref=${cacheImage},mode=max`,
+            '--push'
+        ];
         for (const [key, value] of Object.entries(buildArgs)) {
             if (value) {
                 buildCmd.push('--build-arg', `${key}=${value}`);
@@ -50662,9 +50690,6 @@ class Coolify {
         }
         buildCmd.push(context);
         await execExports.exec('docker', buildCmd);
-        // Push to registry
-        console.log(`Pushing Docker image: ${fullImage}`);
-        await execExports.exec('docker', ['push', fullImage]);
         return fullImage;
     }
     async deployFunctions({ token, serviceUuid, folderPath }) {
