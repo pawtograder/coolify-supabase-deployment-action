@@ -1133,13 +1133,16 @@ export default class Coolify {
       }
 
       if (useDockerImage) {
-        // Update the Docker image tag
+        // Update to Docker image mode — clear git source to prevent auto-deploys
         await updateApplicationByUuid({
           client: this.client,
           path: { uuid: appUUID },
           body: {
             docker_registry_image_name: frontendImageRepo!,
-            docker_registry_image_tag: imageTag
+            docker_registry_image_tag: imageTag,
+            build_pack: 'dockerimage',
+            git_repository: '',
+            git_branch: ''
           }
         })
         console.log(
