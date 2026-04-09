@@ -111,7 +111,8 @@ inputs:
     required: false
     default: ''
   docker_registry_password:
-    description: Registry password/token for push (typically secrets.GITHUB_TOKEN).
+    description:
+      Registry password/token for push (typically secrets.GITHUB_TOKEN).
     required: false
     default: ''
 

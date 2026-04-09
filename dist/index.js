@@ -50650,13 +50650,7 @@ class Coolify {
         const fullImage = `${imageRepo}:${imageTag}`;
         console.log(`Building Docker image: ${fullImage}`);
         // Login to GHCR
-        await execExports.exec('docker', [
-            'login',
-            'ghcr.io',
-            '-u',
-            registryUsername,
-            '--password-stdin'
-        ], {
+        await execExports.exec('docker', ['login', 'ghcr.io', '-u', registryUsername, '--password-stdin'], {
             input: Buffer.from(registryPassword)
         });
         // Build with build-args for NEXT_PUBLIC_* vars

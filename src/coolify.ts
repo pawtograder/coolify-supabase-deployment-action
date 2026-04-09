@@ -168,15 +168,13 @@ export default class Coolify {
     console.log(`Building Docker image: ${fullImage}`)
 
     // Login to GHCR
-    await exec('docker', [
-      'login',
-      'ghcr.io',
-      '-u',
-      registryUsername,
-      '--password-stdin'
-    ], {
-      input: Buffer.from(registryPassword)
-    })
+    await exec(
+      'docker',
+      ['login', 'ghcr.io', '-u', registryUsername, '--password-stdin'],
+      {
+        input: Buffer.from(registryPassword)
+      }
+    )
 
     // Build with build-args for NEXT_PUBLIC_* vars
     const buildCmd = ['build', '-f', dockerfilePath, '-t', fullImage]
