@@ -96,6 +96,24 @@ inputs:
     required: false
     default: ''
     type: string
+  frontend_image_repo:
+    description:
+      GHCR image repo (e.g. ghcr.io/pawtograder/platform-frontend). If set,
+      builds and pushes a Docker image instead of using Nixpacks.
+    required: false
+    default: ''
+  dockerfile_path:
+    description: Path to Dockerfile relative to checkout dir.
+    required: false
+    default: './Dockerfile'
+  docker_registry_username:
+    description: Registry username for push (typically github.actor).
+    required: false
+    default: ''
+  docker_registry_password:
+    description: Registry password/token for push (typically secrets.GITHUB_TOKEN).
+    required: false
+    default: ''
 
 # Define your outputs here.
 outputs:
@@ -119,6 +137,11 @@ outputs:
     description: The UUID of the deleted service (when cleanup was performed).
   deleted_app_uuid:
     description: The UUID of the deleted app (when cleanup was performed).
+  frontend_image:
+    description:
+      Full Docker image ref that was built and pushed (e.g.
+      ghcr.io/org/app:sha-abc1234). Only set when frontend_image_repo is
+      provided.
 
 runs:
   using: node20

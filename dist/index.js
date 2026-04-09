@@ -45202,6 +45202,26 @@ const createPublicApplication = (options) => {
     });
 };
 /**
+ * Create (Docker Image)
+ * Create new application based on a prebuilt docker image
+ */
+const createDockerimageApplication = (options) => {
+    return (options.client ?? client).post({
+        security: [
+            {
+                scheme: 'bearer',
+                type: 'http'
+            }
+        ],
+        url: '/applications/dockerimage',
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            ...options.headers
+        }
+    });
+};
+/**
  * Delete
  * Delete application by UUID.
  */
@@ -50626,6 +50646,33 @@ class Coolify {
         this.base_deployment_url = base_deployment_url;
         this.bugsink_dsn = bugsink_dsn;
     }
+    async buildAndPushDockerImage({ imageRepo, imageTag, dockerfilePath, context, registryUsername, registryPassword, buildArgs }) {
+        const fullImage = `${imageRepo}:${imageTag}`;
+        console.log(`Building Docker image: ${fullImage}`);
+        // Login to GHCR
+        await execExports.exec('docker', [
+            'login',
+            'ghcr.io',
+            '-u',
+            registryUsername,
+            '--password-stdin'
+        ], {
+            input: Buffer.from(registryPassword)
+        });
+        // Build with build-args for NEXT_PUBLIC_* vars
+        const buildCmd = ['build', '-f', dockerfilePath, '-t', fullImage];
+        for (const [key, value] of Object.entries(buildArgs)) {
+            if (value) {
+                buildCmd.push('--build-arg', `${key}=${value}`);
+            }
+        }
+        buildCmd.push(context);
+        await execExports.exec('docker', buildCmd);
+        // Push to registry
+        console.log(`Pushing Docker image: ${fullImage}`);
+        await execExports.exec('docker', ['push', fullImage]);
+        return fullImage;
+    }
     async deployFunctions({ token, serviceUuid, folderPath }) {
         const zip = new JSZip();
         // Recursive function to add files to zip
@@ -51131,7 +51178,7 @@ class Coolify {
             deletedApp: frontendApp?.uuid
         };
     }
-    async createDeployment({ ephemeral, checkedOutProjectDir, deploymentName, repository, gitBranch, gitCommitSha, reset_supabase_db }) {
+    async createDeployment({ ephemeral, checkedOutProjectDir, deploymentName, repository, gitBranch, gitCommitSha, reset_supabase_db, frontendImageRepo, dockerfilePath, dockerRegistryUsername, dockerRegistryPassword }) {
         const supabaseComponentName = `${deploymentName}-supabase`;
         const { backendServiceUUID, postgres_db, postgres_hostname, postgres_port, postgres_password, supabase_url, supabase_anon_key, supabase_service_role_key, deploymentKey, isNewSupabaseService, edgeFunctionSecret, studio_user, studio_password } = await this.getSupabaseServiceUUIDOrCreateNewOne({
             supabaseComponentName,
@@ -51139,159 +51186,217 @@ class Coolify {
         });
         console.log(`Backend service UUID: ${backendServiceUUID}`);
         const frontendAppName = `${deploymentName}-frontend`;
-        //If there is already a frontend app with the target name, delete it
         const existingApplications = await listApplications({
             client: this.client
         });
-        console.log('Waiting for backend to start');
-        await this.waitUntilServiceIsReady({
-            serviceUUID: backendServiceUUID
-        });
-        console.log('Backend started');
-        await this.deployFunctions({
-            token: deploymentKey,
-            serviceUuid: backendServiceUUID,
-            folderPath: checkedOutProjectDir
-        });
-        await this.pushMigrations({
-            serviceUUID: backendServiceUUID,
-            deployToken: deploymentKey,
-            checkedOutProjectDir,
-            resetDb: isNewSupabaseService || reset_supabase_db,
-            postgresPassword: postgres_password,
-            supabase_url: supabase_url,
-            edgeFunctionSecret: edgeFunctionSecret
-        });
-        if (isNewSupabaseService) {
-            //Update vault secrets
-            await this.updateSecrets({
-                serviceUUID: backendServiceUUID,
-                deployToken: deploymentKey,
-                postgres_db,
-                postgres_password,
-                edgeFunctionSecret,
-                supabase_url
-            });
-        }
         const existingFrontendApp = existingApplications.data?.find((app) => app.name === frontendAppName);
         let appUUID = existingFrontendApp?.uuid;
         let appURL = `https://${deploymentName}.${this.base_deployment_url}`;
         const isNewDeployment = !existingFrontendApp || !appUUID;
         // For existing deployments, retrieve the actual URL from Coolify
         if (!isNewDeployment && existingFrontendApp?.fqdn) {
-            // fqdn may contain multiple domains separated by commas, take the first one
             const domains = existingFrontendApp.fqdn.split(',').map((d) => d.trim());
             if (domains.length > 0 && domains[0]) {
                 appURL = domains[0];
                 console.log(`Using existing app URL from Coolify: ${appURL}`);
             }
         }
-        if (isNewDeployment) {
-            //Create frontend service, deploy it
-            const frontendApp = await createPublicApplication({
-                client: this.client,
-                body: {
-                    name: frontendAppName,
-                    project_uuid: this.project_uuid,
-                    environment_uuid: this.environment_uuid,
-                    description: ephemeral
-                        ? `Ephemeral frontend app for ${deploymentName} launched at ${new Date().toISOString()}`
-                        : undefined,
-                    build_pack: 'nixpacks',
-                    environment_name: this.environment_name,
-                    server_uuid: this.server_uuid
-                        ? this.server_uuid
-                        : await this.getServerUUID(),
-                    git_repository: repository,
-                    git_branch: gitBranch,
-                    git_commit_sha: gitCommitSha,
-                    ports_exposes: '3000',
-                    domains: `https://${deploymentName}.${this.base_deployment_url}`
-                }
+        const useDockerImage = !!(frontendImageRepo &&
+            dockerRegistryUsername &&
+            dockerRegistryPassword);
+        const imageTag = `sha-${gitCommitSha.substring(0, 7)}`;
+        let frontendImage;
+        // Run Docker build (if enabled) IN PARALLEL with Supabase backend readiness
+        const backendReadyPromise = (async () => {
+            console.log('Waiting for backend to start');
+            await this.waitUntilServiceIsReady({
+                serviceUUID: backendServiceUUID
             });
-            appUUID = frontendApp.data?.uuid;
-            if (frontendApp.error) {
-                console.error(frontendApp);
-                throw new Error('Frontend app creation failed');
+            console.log('Backend started');
+            await this.deployFunctions({
+                token: deploymentKey,
+                serviceUuid: backendServiceUUID,
+                folderPath: checkedOutProjectDir
+            });
+            await this.pushMigrations({
+                serviceUUID: backendServiceUUID,
+                deployToken: deploymentKey,
+                checkedOutProjectDir,
+                resetDb: isNewSupabaseService || reset_supabase_db,
+                postgresPassword: postgres_password,
+                supabase_url: supabase_url,
+                edgeFunctionSecret: edgeFunctionSecret
+            });
+            if (isNewSupabaseService) {
+                await this.updateSecrets({
+                    serviceUUID: backendServiceUUID,
+                    deployToken: deploymentKey,
+                    postgres_db,
+                    postgres_password,
+                    edgeFunctionSecret,
+                    supabase_url
+                });
             }
-            if (!appUUID) {
-                throw new Error('Frontend app UUID not found');
-            }
-            console.log(`Frontend app UUID: ${appUUID}`);
-            const client = this.client;
-            async function createEnvForApp(appUUID, envs) {
-                for (const env of envs) {
-                    await createEnvByApplicationUuid({
-                        client,
-                        path: {
-                            uuid: appUUID
-                        },
-                        body: {
-                            key: env.key,
-                            value: env.value
-                        }
-                    });
+        })();
+        const dockerBuildPromise = useDockerImage
+            ? this.buildAndPushDockerImage({
+                imageRepo: frontendImageRepo,
+                imageTag,
+                dockerfilePath: dockerfilePath || './Dockerfile',
+                context: checkedOutProjectDir,
+                registryUsername: dockerRegistryUsername,
+                registryPassword: dockerRegistryPassword,
+                buildArgs: {
+                    NEXT_PUBLIC_SUPABASE_URL: supabase_url,
+                    NEXT_PUBLIC_SUPABASE_ANON_KEY: supabase_anon_key,
+                    NEXT_PUBLIC_PAWTOGRADER_WEB_URL: appURL,
+                    NEXT_PUBLIC_BUGSINK_DSN: this.bugsink_dsn,
+                    NEXT_PUBLIC_BUGSINK_HOST: extractHostFromDsn(this.bugsink_dsn),
+                    NEXT_PUBLIC_GIT_COMMIT_SHA: gitCommitSha
                 }
+            })
+            : Promise.resolve(undefined);
+        // Wait for both to complete
+        const [, builtImage] = await Promise.all([
+            backendReadyPromise,
+            dockerBuildPromise
+        ]);
+        frontendImage = builtImage;
+        // --- Deploy frontend ---
+        const client = this.client;
+        async function createEnvForApp(appUUID, envs) {
+            for (const env of envs) {
+                await createEnvByApplicationUuid({
+                    client,
+                    path: { uuid: appUUID },
+                    body: { key: env.key, value: env.value }
+                });
             }
-            await createEnvForApp(appUUID, [
+        }
+        if (isNewDeployment) {
+            if (useDockerImage) {
+                // Create frontend from pre-built Docker image
+                const frontendApp = await createDockerimageApplication({
+                    client: this.client,
+                    body: {
+                        name: frontendAppName,
+                        project_uuid: this.project_uuid,
+                        environment_uuid: this.environment_uuid,
+                        description: ephemeral
+                            ? `Ephemeral frontend app for ${deploymentName} launched at ${new Date().toISOString()}`
+                            : undefined,
+                        environment_name: this.environment_name,
+                        server_uuid: this.server_uuid
+                            ? this.server_uuid
+                            : await this.getServerUUID(),
+                        docker_registry_image_name: frontendImageRepo,
+                        docker_registry_image_tag: imageTag,
+                        ports_exposes: '3000',
+                        domains: `https://${deploymentName}.${this.base_deployment_url}`
+                    }
+                });
+                appUUID = frontendApp.data?.uuid;
+                if (frontendApp.error) {
+                    console.error(frontendApp);
+                    throw new Error('Frontend app creation failed');
+                }
+                if (!appUUID) {
+                    throw new Error('Frontend app UUID not found');
+                }
+                console.log(`Frontend app UUID (Docker image): ${appUUID}`);
+            }
+            else {
+                // Create frontend via Nixpacks (existing path)
+                const frontendApp = await createPublicApplication({
+                    client: this.client,
+                    body: {
+                        name: frontendAppName,
+                        project_uuid: this.project_uuid,
+                        environment_uuid: this.environment_uuid,
+                        description: ephemeral
+                            ? `Ephemeral frontend app for ${deploymentName} launched at ${new Date().toISOString()}`
+                            : undefined,
+                        build_pack: 'nixpacks',
+                        environment_name: this.environment_name,
+                        server_uuid: this.server_uuid
+                            ? this.server_uuid
+                            : await this.getServerUUID(),
+                        git_repository: repository,
+                        git_branch: gitBranch,
+                        git_commit_sha: gitCommitSha,
+                        ports_exposes: '3000',
+                        domains: `https://${deploymentName}.${this.base_deployment_url}`
+                    }
+                });
+                appUUID = frontendApp.data?.uuid;
+                if (frontendApp.error) {
+                    console.error(frontendApp);
+                    throw new Error('Frontend app creation failed');
+                }
+                if (!appUUID) {
+                    throw new Error('Frontend app UUID not found');
+                }
+                console.log(`Frontend app UUID (Nixpacks): ${appUUID}`);
+            }
+            // Set runtime environment variables (server-side only; NEXT_PUBLIC_* are baked in for Docker)
+            const runtimeEnvs = [
                 { key: 'POSTGRES_DB', value: postgres_db },
                 { key: 'POSTGRES_HOSTNAME', value: postgres_hostname },
                 { key: 'POSTGRES_PORT', value: postgres_port },
                 { key: 'POSTGRES_PASSWORD', value: postgres_password },
-                { key: 'SUPABASE_SERVICE_ROLE_KEY', value: supabase_service_role_key },
-                { key: 'NEXT_PUBLIC_SUPABASE_URL', value: supabase_url },
-                { key: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', value: supabase_anon_key },
-                {
-                    key: 'NEXT_PUBLIC_BUGSINK_DSN',
-                    value: this.bugsink_dsn
-                },
-                {
+                { key: 'SUPABASE_SERVICE_ROLE_KEY', value: supabase_service_role_key }
+            ];
+            // For Nixpacks, NEXT_PUBLIC_* vars are needed at runtime (not baked in)
+            if (!useDockerImage) {
+                runtimeEnvs.push({ key: 'NEXT_PUBLIC_SUPABASE_URL', value: supabase_url }, { key: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', value: supabase_anon_key }, { key: 'NEXT_PUBLIC_BUGSINK_DSN', value: this.bugsink_dsn }, {
                     key: 'NEXT_PUBLIC_BUGSINK_HOST',
                     value: extractHostFromDsn(this.bugsink_dsn)
-                },
-                {
-                    key: 'VERCEL_GIT_COMMIT_SHA',
-                    value: '$SOURCE_COMMIT'
-                }
-            ]);
-            //Deploy the frontend
+                }, { key: 'VERCEL_GIT_COMMIT_SHA', value: '$SOURCE_COMMIT' });
+            }
+            await createEnvForApp(appUUID, runtimeEnvs);
+            // Start the frontend
             const { data: startData } = await startApplicationByUuid({
                 client,
-                path: {
-                    uuid: appUUID
-                }
+                path: { uuid: appUUID }
             });
             const deployment_uuid = startData?.deployment_uuid;
-            //Wait for frontend to start
             console.log('Waiting for frontend to start');
             await this.waitUntilAppIsReady({
                 appUUID: appUUID,
                 deployment_uuid: deployment_uuid,
-                timeout_seconds: 20 * 60 //20 minutes, woof
+                timeout_seconds: 20 * 60
             });
             console.log('Frontend started');
         }
         else {
-            // appUUID is guaranteed to be defined here since isNewDeployment is false
+            // Existing deployment — update and redeploy
             if (!appUUID) {
                 throw new Error('Frontend app UUID not found for existing deployment');
             }
-            //Update the commit SHA of the frontend app
-            await updateApplicationByUuid({
-                client: this.client,
-                path: {
-                    uuid: appUUID
-                },
-                body: {
-                    git_commit_sha: gitCommitSha
-                }
-            });
-            console.log(`Deploying frontend app ${appUUID} with commit ${gitCommitSha}`);
+            if (useDockerImage) {
+                // Update the Docker image tag
+                await updateApplicationByUuid({
+                    client: this.client,
+                    path: { uuid: appUUID },
+                    body: {
+                        docker_registry_image_name: frontendImageRepo,
+                        docker_registry_image_tag: imageTag
+                    }
+                });
+                console.log(`Deploying frontend app ${appUUID} with image ${frontendImageRepo}:${imageTag}`);
+            }
+            else {
+                // Update the git commit SHA
+                await updateApplicationByUuid({
+                    client: this.client,
+                    path: { uuid: appUUID },
+                    body: { git_commit_sha: gitCommitSha }
+                });
+                console.log(`Deploying frontend app ${appUUID} with commit ${gitCommitSha}`);
+            }
             const { data: deploymentsData } = await deployByTagOrUuid({
                 client: this.client,
-                query: {
-                    uuid: appUUID
-                }
+                query: { uuid: appUUID }
             });
             if (!deploymentsData ||
                 !deploymentsData.deployments ||
@@ -51306,7 +51411,7 @@ class Coolify {
             await this.waitUntilAppIsReady({
                 appUUID: appUUID,
                 deployment_uuid: deployment_uuid,
-                timeout_seconds: 20 * 60 //20 minutes, woof
+                timeout_seconds: 20 * 60
             });
         }
         return {
@@ -51322,7 +51427,8 @@ class Coolify {
             postgres_password,
             studio_user,
             studio_password,
-            isNewDeployment
+            isNewDeployment,
+            frontendImage
         };
     }
     async pushMigrations({ serviceUUID, deployToken, checkedOutProjectDir, postgresPassword, resetDb, supabase_url, edgeFunctionSecret }) {
@@ -51579,6 +51685,10 @@ async function run() {
     const bugsink_dsn = coreExports.getInput('bugsink_dsn');
     const discord_webhook_url = coreExports.getInput('discord_webhook_url');
     const github_token = coreExports.getInput('github_token');
+    const frontend_image_repo = coreExports.getInput('frontend_image_repo');
+    const dockerfile_path = coreExports.getInput('dockerfile_path');
+    const docker_registry_username = coreExports.getInput('docker_registry_username');
+    const docker_registry_password = coreExports.getInput('docker_registry_password');
     const coolify = new Coolify({
         baseUrl: coolify_api_url,
         token: coolify_api_token,
@@ -51629,12 +51739,17 @@ async function run() {
             repository: `https://github.com/${repository}`,
             gitBranch: branchOrPR,
             gitCommitSha: gitSha,
-            reset_supabase_db: reset_supabase_db === 'true'
+            reset_supabase_db: reset_supabase_db === 'true',
+            frontendImageRepo: frontend_image_repo || undefined,
+            dockerfilePath: dockerfile_path || undefined,
+            dockerRegistryUsername: docker_registry_username || undefined,
+            dockerRegistryPassword: docker_registry_password || undefined
         });
         coreExports.setOutput('supabase_url', deployment.supabase_url);
         coreExports.setOutput('supabase_service_role_key', deployment.supabase_service_role_key);
         coreExports.setOutput('supabase_anon_key', deployment.supabase_anon_key);
         coreExports.setOutput('app_url', deployment.appURL);
+        coreExports.setOutput('frontend_image', deployment.frontendImage || '');
         coreExports.setOutput('service_uuid', deployment.serviceUUID);
         coreExports.setOutput('app_uuid', deployment.appUUID);
         // Send Discord webhook notification only for NEW deployments
