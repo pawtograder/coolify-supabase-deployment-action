@@ -51776,6 +51776,7 @@ async function run() {
         coreExports.setOutput('frontend_image', deployment.frontendImage || '');
         coreExports.setOutput('service_uuid', deployment.serviceUUID);
         coreExports.setOutput('app_uuid', deployment.appUUID);
+        coreExports.setOutput('edge_function_secret', deployment.edgeFunctionSecret || '');
         // Send Discord webhook notification only for NEW deployments
         if (discord_webhook_url && deployment.isNewDeployment) {
             await sendDiscordWebhook({

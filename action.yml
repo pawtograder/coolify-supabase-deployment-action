@@ -130,6 +130,8 @@ outputs:
     description: The UUID of the newly deployed service.
   app_uuid:
     description: The UUID of the newly deployed web application.
+  edge_function_secret:
+    description: The edge function secret for invoking edge functions directly.
   cleanup_performed:
     description:
       Whether a cleanup was performed (set to 'true' when PR is closed and

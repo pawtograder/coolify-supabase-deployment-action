@@ -414,6 +414,7 @@ export async function run() {
     setOutput('frontend_image', deployment.frontendImage || '')
     setOutput('service_uuid', deployment.serviceUUID)
     setOutput('app_uuid', deployment.appUUID)
+    setOutput('edge_function_secret', deployment.edgeFunctionSecret || '')
 
     // Send Discord webhook notification only for NEW deployments
     if (discord_webhook_url && deployment.isNewDeployment) {
