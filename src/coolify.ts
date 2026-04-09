@@ -996,7 +996,9 @@ export default class Coolify {
             NEXT_PUBLIC_PAWTOGRADER_WEB_URL: appURL,
             NEXT_PUBLIC_BUGSINK_DSN: this.bugsink_dsn,
             NEXT_PUBLIC_BUGSINK_HOST: extractHostFromDsn(this.bugsink_dsn),
-            NEXT_PUBLIC_GIT_COMMIT_SHA: gitCommitSha
+            NEXT_PUBLIC_GIT_COMMIT_SHA: gitCommitSha,
+            SUPABASE_URL: supabase_url,
+            SENTRY_RELEASE: gitCommitSha
           }
         })
       : Promise.resolve(undefined)
