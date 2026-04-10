@@ -329,6 +329,10 @@ export async function run() {
   const bugsink_dsn = getInput('bugsink_dsn')
   const discord_webhook_url = getInput('discord_webhook_url')
   const github_token = getInput('github_token')
+  const frontend_image_repo = getInput('frontend_image_repo')
+  const dockerfile_path = getInput('dockerfile_path')
+  const docker_registry_username = getInput('docker_registry_username')
+  const docker_registry_password = getInput('docker_registry_password')
 
   const coolify = new Coolify({
     baseUrl: coolify_api_url,
@@ -396,15 +400,21 @@ export async function run() {
       repository: `https://github.com/${repository}`,
       gitBranch: branchOrPR,
       gitCommitSha: gitSha,
-      reset_supabase_db: reset_supabase_db === 'true'
+      reset_supabase_db: reset_supabase_db === 'true',
+      frontendImageRepo: frontend_image_repo || undefined,
+      dockerfilePath: dockerfile_path || undefined,
+      dockerRegistryUsername: docker_registry_username || undefined,
+      dockerRegistryPassword: docker_registry_password || undefined
     })
 
     setOutput('supabase_url', deployment.supabase_url)
     setOutput('supabase_service_role_key', deployment.supabase_service_role_key)
     setOutput('supabase_anon_key', deployment.supabase_anon_key)
     setOutput('app_url', deployment.appURL)
+    setOutput('frontend_image', deployment.frontendImage || '')
     setOutput('service_uuid', deployment.serviceUUID)
     setOutput('app_uuid', deployment.appUUID)
+    setOutput('edge_function_secret', deployment.edgeFunctionSecret || '')
 
     // Send Discord webhook notification only for NEW deployments
     if (discord_webhook_url && deployment.isNewDeployment) {

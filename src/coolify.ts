@@ -8,6 +8,7 @@ import postgres from 'postgres'
 import { createClient } from './client/client/client.js'
 import { Client } from './client/client/types.js'
 import {
+  createDockerimageApplication,
   createEnvByApplicationUuid,
   createEnvByServiceUuid,
   createPublicApplication,
@@ -146,6 +147,76 @@ export default class Coolify {
     this.base_deployment_url = base_deployment_url
     this.bugsink_dsn = bugsink_dsn
   }
+  async buildAndPushDockerImage({
+    imageRepo,
+    imageTag,
+    dockerfilePath,
+    context,
+    registryUsername,
+    registryPassword,
+    buildArgs
+  }: {
+    imageRepo: string
+    imageTag: string
+    dockerfilePath: string
+    context: string
+    registryUsername: string
+    registryPassword: string
+    buildArgs: Record<string, string>
+  }): Promise<string> {
+    const fullImage = `${imageRepo}:${imageTag}`
+    console.log(`Building Docker image: ${fullImage}`)
+
+    // Login to GHCR
+    await exec(
+      'docker',
+      ['login', 'ghcr.io', '-u', registryUsername, '--password-stdin'],
+      {
+        input: Buffer.from(registryPassword)
+      }
+    )
+
+    // Ensure buildx builder exists for registry-based caching
+    const cacheImage = `${imageRepo}:cache`
+    try {
+      await exec('docker', ['buildx', 'inspect', 'ci-builder'], {
+        silent: true
+      })
+    } catch {
+      await exec('docker', [
+        'buildx',
+        'create',
+        '--name',
+        'ci-builder',
+        '--use'
+      ])
+    }
+
+    // Build with buildx + registry layer cache
+    const buildCmd = [
+      'buildx',
+      'build',
+      '--builder',
+      'ci-builder',
+      '-f',
+      dockerfilePath,
+      '-t',
+      fullImage,
+      `--cache-from=type=registry,ref=${cacheImage}`,
+      `--cache-to=type=registry,ref=${cacheImage},mode=max`,
+      '--push'
+    ]
+    for (const [key, value] of Object.entries(buildArgs)) {
+      if (value) {
+        buildCmd.push('--build-arg', `${key}=${value}`)
+      }
+    }
+    buildCmd.push(context)
+    await exec('docker', buildCmd)
+
+    return fullImage
+  }
+
   async deployFunctions({
     token,
     serviceUuid,
@@ -832,7 +903,11 @@ export default class Coolify {
     repository,
     gitBranch,
     gitCommitSha,
-    reset_supabase_db
+    reset_supabase_db,
+    frontendImageRepo,
+    dockerfilePath,
+    dockerRegistryUsername,
+    dockerRegistryPassword
   }: {
     ephemeral: boolean
     checkedOutProjectDir: string
@@ -841,6 +916,10 @@ export default class Coolify {
     gitBranch: string
     gitCommitSha: string
     reset_supabase_db?: boolean
+    frontendImageRepo?: string
+    dockerfilePath?: string
+    dockerRegistryUsername?: string
+    dockerRegistryPassword?: string
   }) {
     const supabaseComponentName = `${deploymentName}-supabase`
     const {
@@ -864,43 +943,9 @@ export default class Coolify {
     console.log(`Backend service UUID: ${backendServiceUUID}`)
 
     const frontendAppName = `${deploymentName}-frontend`
-    //If there is already a frontend app with the target name, delete it
     const existingApplications = await listApplications({
       client: this.client
     })
-
-    console.log('Waiting for backend to start')
-    await this.waitUntilServiceIsReady({
-      serviceUUID: backendServiceUUID
-    })
-    console.log('Backend started')
-
-    await this.deployFunctions({
-      token: deploymentKey,
-      serviceUuid: backendServiceUUID,
-      folderPath: checkedOutProjectDir
-    })
-
-    await this.pushMigrations({
-      serviceUUID: backendServiceUUID,
-      deployToken: deploymentKey,
-      checkedOutProjectDir,
-      resetDb: isNewSupabaseService || reset_supabase_db,
-      postgresPassword: postgres_password,
-      supabase_url: supabase_url,
-      edgeFunctionSecret: edgeFunctionSecret
-    })
-    if (isNewSupabaseService) {
-      //Update vault secrets
-      await this.updateSecrets({
-        serviceUUID: backendServiceUUID,
-        deployToken: deploymentKey,
-        postgres_db,
-        postgres_password,
-        edgeFunctionSecret,
-        supabase_url
-      })
-    }
 
     const existingFrontendApp = existingApplications.data?.find(
       (app) => app.name === frontendAppName
@@ -911,7 +956,6 @@ export default class Coolify {
 
     // For existing deployments, retrieve the actual URL from Coolify
     if (!isNewDeployment && existingFrontendApp?.fqdn) {
-      // fqdn may contain multiple domains separated by commas, take the first one
       const domains = existingFrontendApp.fqdn.split(',').map((d) => d.trim())
       if (domains.length > 0 && domains[0]) {
         appURL = domains[0]
@@ -919,119 +963,232 @@ export default class Coolify {
       }
     }
 
-    if (isNewDeployment) {
-      //Create frontend service, deploy it
-      const frontendApp = await createPublicApplication({
-        client: this.client,
-        body: {
-          name: frontendAppName,
-          project_uuid: this.project_uuid,
-          environment_uuid: this.environment_uuid,
-          description: ephemeral
-            ? `Ephemeral frontend app for ${deploymentName} launched at ${new Date().toISOString()}`
-            : undefined,
-          build_pack: 'nixpacks',
-          environment_name: this.environment_name,
-          server_uuid: this.server_uuid
-            ? this.server_uuid
-            : await this.getServerUUID(),
-          git_repository: repository,
-          git_branch: gitBranch,
-          git_commit_sha: gitCommitSha,
-          ports_exposes: '3000',
-          domains: `https://${deploymentName}.${this.base_deployment_url}`
-        }
+    const useDockerImage = !!(
+      frontendImageRepo &&
+      dockerRegistryUsername &&
+      dockerRegistryPassword
+    )
+    const imageTag = `sha-${gitCommitSha.substring(0, 7)}`
+    let frontendImage: string | undefined
+
+    // Run Docker build (if enabled) IN PARALLEL with Supabase backend readiness
+    const backendReadyPromise = (async () => {
+      console.log('Waiting for backend to start')
+      await this.waitUntilServiceIsReady({
+        serviceUUID: backendServiceUUID
       })
-      appUUID = frontendApp.data?.uuid
-      if (frontendApp.error) {
-        console.error(frontendApp)
-        throw new Error('Frontend app creation failed')
-      }
-      if (!appUUID) {
-        throw new Error('Frontend app UUID not found')
-      }
-      console.log(`Frontend app UUID: ${appUUID}`)
+      console.log('Backend started')
 
-      const client = this.client
-      async function createEnvForApp(
-        appUUID: string,
-        envs: { key: string; value: string }[]
-      ) {
-        for (const env of envs) {
-          await createEnvByApplicationUuid({
-            client,
-            path: {
-              uuid: appUUID
-            },
-            body: {
-              key: env.key,
-              value: env.value
-            }
-          })
+      await this.deployFunctions({
+        token: deploymentKey,
+        serviceUuid: backendServiceUUID,
+        folderPath: checkedOutProjectDir
+      })
+
+      await this.pushMigrations({
+        serviceUUID: backendServiceUUID,
+        deployToken: deploymentKey,
+        checkedOutProjectDir,
+        resetDb: isNewSupabaseService || reset_supabase_db,
+        postgresPassword: postgres_password,
+        supabase_url: supabase_url,
+        edgeFunctionSecret: edgeFunctionSecret
+      })
+      // Always update vault secrets after pushing migrations — migrations may
+      // reset the vault to dev defaults (e.g. edge-function-secret, project URL).
+      {
+        await this.updateSecrets({
+          serviceUUID: backendServiceUUID,
+          deployToken: deploymentKey,
+          postgres_db,
+          postgres_password,
+          edgeFunctionSecret,
+          supabase_url
+        })
+      }
+    })()
+
+    const dockerBuildPromise = useDockerImage
+      ? this.buildAndPushDockerImage({
+          imageRepo: frontendImageRepo!,
+          imageTag,
+          dockerfilePath: dockerfilePath || './Dockerfile',
+          context: checkedOutProjectDir,
+          registryUsername: dockerRegistryUsername!,
+          registryPassword: dockerRegistryPassword!,
+          buildArgs: {
+            NEXT_PUBLIC_SUPABASE_URL: supabase_url,
+            NEXT_PUBLIC_SUPABASE_ANON_KEY: supabase_anon_key,
+            NEXT_PUBLIC_PAWTOGRADER_WEB_URL: appURL,
+            NEXT_PUBLIC_BUGSINK_DSN: this.bugsink_dsn,
+            NEXT_PUBLIC_BUGSINK_HOST: extractHostFromDsn(this.bugsink_dsn),
+            NEXT_PUBLIC_GIT_COMMIT_SHA: gitCommitSha,
+            SUPABASE_URL: supabase_url,
+            SENTRY_RELEASE: gitCommitSha
+          }
+        })
+      : Promise.resolve(undefined)
+
+    // Wait for both to complete
+    const [, builtImage] = await Promise.all([
+      backendReadyPromise,
+      dockerBuildPromise
+    ])
+    frontendImage = builtImage
+
+    // --- Deploy frontend ---
+    const client = this.client
+    async function createEnvForApp(
+      appUUID: string,
+      envs: { key: string; value: string }[]
+    ) {
+      for (const env of envs) {
+        await createEnvByApplicationUuid({
+          client,
+          path: { uuid: appUUID },
+          body: { key: env.key, value: env.value }
+        })
+      }
+    }
+
+    if (isNewDeployment) {
+      if (useDockerImage) {
+        // Create frontend from pre-built Docker image
+        const frontendApp = await createDockerimageApplication({
+          client: this.client,
+          body: {
+            name: frontendAppName,
+            project_uuid: this.project_uuid,
+            environment_uuid: this.environment_uuid,
+            description: ephemeral
+              ? `Ephemeral frontend app for ${deploymentName} launched at ${new Date().toISOString()}`
+              : undefined,
+            environment_name: this.environment_name,
+            server_uuid: this.server_uuid
+              ? this.server_uuid
+              : await this.getServerUUID(),
+            docker_registry_image_name: frontendImageRepo!,
+            docker_registry_image_tag: imageTag,
+            ports_exposes: '3000',
+            domains: `https://${deploymentName}.${this.base_deployment_url}`
+          }
+        })
+        appUUID = frontendApp.data?.uuid
+        if (frontendApp.error) {
+          console.error(frontendApp)
+          throw new Error('Frontend app creation failed')
         }
+        if (!appUUID) {
+          throw new Error('Frontend app UUID not found')
+        }
+        console.log(`Frontend app UUID (Docker image): ${appUUID}`)
+      } else {
+        // Create frontend via Nixpacks (existing path)
+        const frontendApp = await createPublicApplication({
+          client: this.client,
+          body: {
+            name: frontendAppName,
+            project_uuid: this.project_uuid,
+            environment_uuid: this.environment_uuid,
+            description: ephemeral
+              ? `Ephemeral frontend app for ${deploymentName} launched at ${new Date().toISOString()}`
+              : undefined,
+            build_pack: 'nixpacks',
+            environment_name: this.environment_name,
+            server_uuid: this.server_uuid
+              ? this.server_uuid
+              : await this.getServerUUID(),
+            git_repository: repository,
+            git_branch: gitBranch,
+            git_commit_sha: gitCommitSha,
+            ports_exposes: '3000',
+            domains: `https://${deploymentName}.${this.base_deployment_url}`
+          }
+        })
+        appUUID = frontendApp.data?.uuid
+        if (frontendApp.error) {
+          console.error(frontendApp)
+          throw new Error('Frontend app creation failed')
+        }
+        if (!appUUID) {
+          throw new Error('Frontend app UUID not found')
+        }
+        console.log(`Frontend app UUID (Nixpacks): ${appUUID}`)
       }
 
-      await createEnvForApp(appUUID, [
+      // Set runtime environment variables (server-side only; NEXT_PUBLIC_* are baked in for Docker)
+      const runtimeEnvs: { key: string; value: string }[] = [
         { key: 'POSTGRES_DB', value: postgres_db },
         { key: 'POSTGRES_HOSTNAME', value: postgres_hostname },
         { key: 'POSTGRES_PORT', value: postgres_port },
         { key: 'POSTGRES_PASSWORD', value: postgres_password },
-        { key: 'SUPABASE_SERVICE_ROLE_KEY', value: supabase_service_role_key },
-        { key: 'NEXT_PUBLIC_SUPABASE_URL', value: supabase_url },
-        { key: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', value: supabase_anon_key },
-        {
-          key: 'NEXT_PUBLIC_BUGSINK_DSN',
-          value: this.bugsink_dsn
-        },
-        {
-          key: 'NEXT_PUBLIC_BUGSINK_HOST',
-          value: extractHostFromDsn(this.bugsink_dsn)
-        },
-        {
-          key: 'VERCEL_GIT_COMMIT_SHA',
-          value: '$SOURCE_COMMIT'
-        }
-      ])
+        { key: 'SUPABASE_SERVICE_ROLE_KEY', value: supabase_service_role_key }
+      ]
+      // For Nixpacks, NEXT_PUBLIC_* vars are needed at runtime (not baked in)
+      if (!useDockerImage) {
+        runtimeEnvs.push(
+          { key: 'NEXT_PUBLIC_SUPABASE_URL', value: supabase_url },
+          { key: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', value: supabase_anon_key },
+          { key: 'NEXT_PUBLIC_BUGSINK_DSN', value: this.bugsink_dsn },
+          {
+            key: 'NEXT_PUBLIC_BUGSINK_HOST',
+            value: extractHostFromDsn(this.bugsink_dsn)
+          },
+          { key: 'VERCEL_GIT_COMMIT_SHA', value: '$SOURCE_COMMIT' }
+        )
+      }
+      await createEnvForApp(appUUID, runtimeEnvs)
 
-      //Deploy the frontend
+      // Start the frontend
       const { data: startData } = await startApplicationByUuid({
         client,
-        path: {
-          uuid: appUUID
-        }
+        path: { uuid: appUUID }
       })
       const deployment_uuid = startData?.deployment_uuid
-      //Wait for frontend to start
       console.log('Waiting for frontend to start')
       await this.waitUntilAppIsReady({
         appUUID: appUUID,
         deployment_uuid: deployment_uuid,
-        timeout_seconds: 20 * 60 //20 minutes, woof
+        timeout_seconds: 20 * 60
       })
       console.log('Frontend started')
     } else {
-      // appUUID is guaranteed to be defined here since isNewDeployment is false
+      // Existing deployment — update and redeploy
       if (!appUUID) {
         throw new Error('Frontend app UUID not found for existing deployment')
       }
-      //Update the commit SHA of the frontend app
-      await updateApplicationByUuid({
-        client: this.client,
-        path: {
-          uuid: appUUID
-        },
-        body: {
-          git_commit_sha: gitCommitSha
-        }
-      })
-      console.log(
-        `Deploying frontend app ${appUUID} with commit ${gitCommitSha}`
-      )
+
+      if (useDockerImage) {
+        // Update to Docker image mode — clear git source to prevent auto-deploys
+        await updateApplicationByUuid({
+          client: this.client,
+          path: { uuid: appUUID },
+          body: {
+            docker_registry_image_name: frontendImageRepo!,
+            docker_registry_image_tag: imageTag,
+            build_pack: 'dockerimage',
+            git_repository: '',
+            git_branch: ''
+          }
+        })
+        console.log(
+          `Deploying frontend app ${appUUID} with image ${frontendImageRepo}:${imageTag}`
+        )
+      } else {
+        // Update the git commit SHA
+        await updateApplicationByUuid({
+          client: this.client,
+          path: { uuid: appUUID },
+          body: { git_commit_sha: gitCommitSha }
+        })
+        console.log(
+          `Deploying frontend app ${appUUID} with commit ${gitCommitSha}`
+        )
+      }
+
       const { data: deploymentsData } = await deployByTagOrUuid({
         client: this.client,
-        query: {
-          uuid: appUUID
-        }
+        query: { uuid: appUUID }
       })
       if (
         !deploymentsData ||
@@ -1045,11 +1202,10 @@ export default class Coolify {
         throw new Error('Failed to deploy frontend app')
       }
       console.log(`Waiting for deployment ${deployment_uuid} to finish`)
-
       await this.waitUntilAppIsReady({
         appUUID: appUUID,
         deployment_uuid: deployment_uuid,
-        timeout_seconds: 20 * 60 //20 minutes, woof
+        timeout_seconds: 20 * 60
       })
     }
 
@@ -1066,7 +1222,9 @@ export default class Coolify {
       postgres_password,
       studio_user,
       studio_password,
-      isNewDeployment
+      isNewDeployment,
+      frontendImage,
+      edgeFunctionSecret
     }
   }
 
@@ -1098,7 +1256,7 @@ export default class Coolify {
     console.log('Tunnel connected')
     let command = ''
     if (!resetDb)
-      command = `./node_modules/.bin/supabase db push --include-all --yes --db-url postgres://postgres:${postgresPassword}@localhost:${localPort}/postgres`
+      command = `supabase db push --include-all --yes --db-url postgres://postgres:${postgresPassword}@localhost:${localPort}/postgres`
     else {
       const sql = postgres(
         `postgres://postgres:${postgresPassword}@localhost:${localPort}/postgres`
@@ -1107,7 +1265,7 @@ export default class Coolify {
       await sql`TRUNCATE TABLE storage.objects CASCADE`
       await sql`TRUNCATE TABLE vault.secrets CASCADE`
       await sql.end()
-      command = `./node_modules/.bin/supabase db reset --yes --db-url postgres://postgres:${postgresPassword}@localhost:${localPort}/postgres`
+      command = `supabase db reset --yes --db-url postgres://postgres:${postgresPassword}@localhost:${localPort}/postgres`
     }
     await exec(command, undefined, {
       cwd: checkedOutProjectDir,
