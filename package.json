@@ -33,11 +33,14 @@
     "package": "npx rollup --config rollup.config.ts --configPlugin @rollup/plugin-typescript",
     "package:watch": "npm run package -- --watch",
     "test": "NODE_OPTIONS=--experimental-vm-modules NODE_NO_WARNINGS=1 npx jest",
-    "all": "npm run format:write && npm run lint && npm run test && npm run coverage && npm run package"
+    "all": "npm run format:write && npm run lint && npm run test && npm run coverage && npm run package",
+    "cleanup-stale": "npx tsx local-scripts/cleanupStaleDeployments.ts",
+    "delete-deployment-branch": "npx tsx local-scripts/deleteDeploymentByBranch.ts"
   },
   "license": "MIT",
   "dependencies": {
     "@actions/core": "^1.11.1",
+    "@octokit/auth-app": "^8.0.0",
     "@actions/exec": "^1.1.1",
     "jszip": "^3.10.1",
     "postgres": "^3.4.7",

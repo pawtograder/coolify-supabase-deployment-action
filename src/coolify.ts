@@ -1098,7 +1098,7 @@ export default class Coolify {
     console.log('Tunnel connected')
     let command = ''
     if (!resetDb)
-      command = `./node_modules/.bin/supabase db push --include-all --db-url postgres://postgres:${postgresPassword}@localhost:${localPort}/postgres`
+      command = `./node_modules/.bin/supabase db push --include-all --yes --db-url postgres://postgres:${postgresPassword}@localhost:${localPort}/postgres`
     else {
       const sql = postgres(
         `postgres://postgres:${postgresPassword}@localhost:${localPort}/postgres`
@@ -1107,11 +1107,10 @@ export default class Coolify {
       await sql`TRUNCATE TABLE storage.objects CASCADE`
       await sql`TRUNCATE TABLE vault.secrets CASCADE`
       await sql.end()
-      command = `./node_modules/.bin/supabase db reset --db-url postgres://postgres:${postgresPassword}@localhost:${localPort}/postgres`
+      command = `./node_modules/.bin/supabase db reset --yes --db-url postgres://postgres:${postgresPassword}@localhost:${localPort}/postgres`
     }
     await exec(command, undefined, {
       cwd: checkedOutProjectDir,
-      input: Buffer.from('y'),
       env: {
         PGSSLMODE: 'disable'
       }
