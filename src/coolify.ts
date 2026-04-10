@@ -994,7 +994,9 @@ export default class Coolify {
         supabase_url: supabase_url,
         edgeFunctionSecret: edgeFunctionSecret
       })
-      if (isNewSupabaseService) {
+      // Always update vault secrets after pushing migrations — migrations may
+      // reset the vault to dev defaults (e.g. edge-function-secret, project URL).
+      {
         await this.updateSecrets({
           serviceUUID: backendServiceUUID,
           deployToken: deploymentKey,
