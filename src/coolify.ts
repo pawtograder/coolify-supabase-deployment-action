@@ -1221,7 +1221,8 @@ export default class Coolify {
       studio_user,
       studio_password,
       isNewDeployment,
-      frontendImage
+      frontendImage,
+      edgeFunctionSecret
     }
   }
 

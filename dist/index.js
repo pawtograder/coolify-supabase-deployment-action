@@ -51452,7 +51452,8 @@ class Coolify {
             studio_user,
             studio_password,
             isNewDeployment,
-            frontendImage
+            frontendImage,
+            edgeFunctionSecret
         };
     }
     async pushMigrations({ serviceUUID, deployToken, checkedOutProjectDir, postgresPassword, resetDb, supabase_url, edgeFunctionSecret }) {
